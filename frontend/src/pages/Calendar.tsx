@@ -21,7 +21,7 @@ function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boo
   return 'bg-white hover:bg-slate-50 border-slate-100 text-slate-400';
 }
 
-// --- OPTİMİZE EDİLMİŞ INPUT (Yazma takılmasını önler) ---
+// --- OPTİMİZE EDİLMİŞ INPUT ---
 const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
   const [localValue, setLocalValue] = useState(value);
   useEffect(() => { setLocalValue(value); }, [value]);
@@ -59,19 +59,16 @@ export function Calendar() {
   const [newBookingData, setNewBookingData] = useState({ roomId: 0, date: '', title: '' });
   const [editForm, setEditForm] = useState({ title: '', start_date: '', end_date: '' });
 
+  // 🆕 Drag & Drop States
+  const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
+  const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
+
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
   const days = getDaysForPeriod(startDate, daysInMonth);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-const getFloorColor = (floor: string) => {
-  switch (floor.toUpperCase()) {
-    case 'F': return 'bg-emerald-50 text-emerald-700 border-emerald-100'; // Giriş/Zemin
-    case 'M': return 'bg-blue-50 text-blue-700 border-blue-100';          // Orta Kat
-    case 'S': return 'bg-amber-50 text-amber-700 border-amber-100';       // Üst Kat/S
-    default: return 'bg-slate-100 text-slate-500 border-slate-200';
-  }
-};
+
   const fetchData = async () => {
     try {
       const [r, b] = await Promise.all([getRooms(), getBookings()]);
@@ -104,7 +101,7 @@ const getFloorColor = (floor: string) => {
     setStartDate(d);
   };
 
-  // --- CRUD (Otomatik Yenileme ve Hata Takibi) ---
+  // --- CRUD ---
   const handleCreate = async () => {
     if (!newBookingData.title) { alert("İsim girmelisiniz!"); return; }
     try {
@@ -116,10 +113,10 @@ const getFloorColor = (floor: string) => {
       });
       setIsNewBookingModalOpen(false);
       setNewBookingData({ roomId: 0, date: '', title: '' });
-      await fetchData(); // TABLOYU GÜNCELLE
+      await fetchData();
     } catch (err: any) {
       console.error("Backend Hatası (Oluşturma):", err);
-      alert("Kayıt oluşturulamadı. Detayları konsoldan (F12) inceleyin.");
+      alert("Kayıt oluşturulamadı.");
     }
   };
 
@@ -132,7 +129,7 @@ const getFloorColor = (floor: string) => {
         end_time: `${editForm.end_date}T17:00:00`,
       });
       setEditingBooking(null);
-      await fetchData(); // TABLOYU GÜNCELLE
+      await fetchData();
     } catch (err: any) {
       console.error("Backend Hatası (Güncelleme):", err);
       alert("Güncelleme yapılamadı.");
@@ -145,8 +142,66 @@ const getFloorColor = (floor: string) => {
       await deleteBooking(id);
       setEditingBooking(null);
       setSelectedDetail(null);
-      await fetchData(); // TABLOYU GÜNCELLE
+      await fetchData();
     } catch (err) { alert("Silme hatası."); }
+  };
+
+  // 🆕 Drag & Drop Handlers
+  const handleDragStart = (e: React.DragEvent, booking: Booking) => {
+    setDraggedBooking(booking);
+    e.dataTransfer.effectAllowed = 'move';
+    // Drag ghost'u şeffaflaştır
+    if (e.dataTransfer.setDragImage) {
+      const ghost = document.createElement('div');
+      ghost.style.opacity = '0';
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 0, 0);
+      setTimeout(() => document.body.removeChild(ghost), 0);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, roomId: number, date: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCell({ roomId, date });
+  };
+
+  const handleDragLeave = () => {
+    setDragOverCell(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
+    e.preventDefault();
+    
+    if (!draggedBooking) return;
+
+    // Aynı hücreye bırakıldıysa işlem yapma
+    const originalDate = new Date(draggedBooking.start_time).toISOString().split('T')[0];
+    const originalRoomId = draggedBooking.room?.id || (draggedBooking as any).room_id;
+    
+    if (originalRoomId === targetRoomId && originalDate === targetDate) {
+      setDraggedBooking(null);
+      setDragOverCell(null);
+      return;
+    }
+
+    try {
+      // Backend'e güncelleme isteği gönder
+      await updateBooking(draggedBooking.id, {
+        room_id: targetRoomId,
+        title: draggedBooking.title,
+        start_time: `${targetDate}T09:00:00`,
+        end_time: `${targetDate}T17:00:00`,
+      });
+      
+      await fetchData(); // Tabloyu yenile
+    } catch (err: any) {
+      console.error("Drag & Drop Hatası:", err);
+      alert("Taşıma işlemi başarısız oldu.");
+    } finally {
+      setDraggedBooking(null);
+      setDragOverCell(null);
+    }
   };
 
   function getBookingsForRoomAndDay(roomId: number, day: Date) {
@@ -219,108 +274,101 @@ const getFloorColor = (floor: string) => {
                 })}
               </tr>
             </thead>
-<tbody>
-  {['F', 'M', 'S'].map(floor => {
-    // Katlara göre özel renk ataması
-    const floorStyles = {
-      F: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-      M: 'bg-blue-50 text-blue-700 border-blue-100',
-      S: 'bg-amber-50 text-amber-700 border-amber-100'
-    }[floor.toUpperCase()] || 'bg-slate-100 text-slate-500 border-slate-200';
+            <tbody>
+              {['F', 'M', 'S'].map(floor => {
+                const floorStyles = {
+                  F: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                  M: 'bg-blue-50 text-blue-700 border-blue-100',
+                  S: 'bg-amber-50 text-amber-700 border-amber-100'
+                }[floor.toUpperCase()] || 'bg-slate-100 text-slate-500 border-slate-200';
 
-    return (
-      <Fragment key={floor}>
-        {/* --- KAT AYIRICI SATIR --- */}
-        <tr className={`${floorStyles} text-[10px] font-black uppercase tracking-[0.3em]`}>
-          <td className={`sticky left-0 z-30 ${floorStyles} backdrop-blur-md px-4 py-3 border-y shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]`}>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span>
-              Floor {floor}
-            </div>
-          </td>
-          <td colSpan={days.length} className="border-y opacity-50"></td>
-        </tr>
+                return (
+                  <Fragment key={floor}>
+                    <tr className={`${floorStyles} text-[10px] font-black uppercase tracking-[0.3em]`}>
+                      <td className={`sticky left-0 z-30 ${floorStyles} backdrop-blur-md px-4 py-3 border-y shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]`}>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span>
+                          Floor {floor}
+                        </div>
+                      </td>
+                      <td colSpan={days.length} className="border-y opacity-50"></td>
+                    </tr>
 
-        {/* --- ODALAR (O kat altındaki odalar) --- */}
-        {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
-          <tr key={room.id} className="border-b border-slate-50 group/row hover:bg-slate-50/50 transition-colors">
-            <td className="sticky left-0 z-30 bg-white p-4 border-r border-slate-200 font-black text-slate-700 text-[11px] uppercase shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] group-hover/row:text-blue-600 transition-colors">
-              {room.name}
-            </td>
+                    {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
+                      <tr key={room.id} className="border-b border-slate-50 group/row hover:bg-slate-50/50 transition-colors">
+                        <td className="sticky left-0 z-30 bg-white p-4 border-r border-slate-200 font-black text-slate-700 text-[11px] uppercase shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] group-hover/row:text-blue-600 transition-colors">
+                          {room.name}
+                        </td>
             {days.map(day => {
-              const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              const dayBookings = getBookingsForRoomAndDay(room.id, day);
-              const bookedCount = dayBookings.length;
-              
-              return (
-                <td key={day.toISOString()} 
-                    onClick={() => bookedCount > 0 
-                      ? setSelectedDetail({ room, day, bookings: dayBookings }) 
-                      : (setNewBookingData({ roomId: room.id, date: day.toISOString().split('T')[0], title: '' }), setIsNewBookingModalOpen(true))
-                    }
-                    className={`p-0 border-r border-slate-100 text-center cursor-pointer h-14 relative transition-all group/cell ${getOccupancyColor(bookedCount, room.capacity, isWeekend)}`}
-                >
-                  <div className="flex flex-col items-center justify-center font-black text-xs">
-                    {bookedCount > 0 ? (
-                      <>
-                        <span>{bookedCount}</span>
-                        {bookedCount < room.capacity && <div className="w-1 h-1 bg-current rounded-full mt-1 opacity-40"></div>}
-                      </>
-                    ) : (
-                      <span className="opacity-0 group-hover/cell:opacity-100 text-blue-500 text-xl font-light transition-opacity">+</span>
-                    )}
-                  </div>
-                </td>
-              );
-            })}
-          </tr>
-        ))}
-      </Fragment>
-    );
-  })}
-</tbody>
+  const dateStr = day.toISOString().split('T')[0];
+  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+  const dayBookings = getBookingsForRoomAndDay(room.id, day);
+  const bookedCount = dayBookings.length;
+  const isDragOver = dragOverCell?.roomId === room.id && dragOverCell?.date === dateStr;
+  
+  return (
+    <td 
+      key={day.toISOString()} 
+      onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => handleDrop(e, room.id, dateStr)}
+      className={`p-1 border-r border-slate-100 text-center h-14 relative transition-all 
+        ${getOccupancyColor(bookedCount, room.capacity, isWeekend)}
+        ${isDragOver ? 'ring-4 ring-blue-500 ring-inset scale-105' : ''}
+      `}
+    >
+      {/* 🔴 BU KISMI DEĞİŞTİR 🔴 */}
+      {bookedCount > 0 ? (
+        <div className="flex flex-wrap gap-0.5 justify-center items-center h-full p-0.5">
+          {dayBookings.map(b => (
+            <div
+              key={b.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, b)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingBooking(b);
+                setEditForm({ 
+                  title: b.title, 
+                  start_date: new Date(b.start_time).toISOString().split('T')[0], 
+                  end_date: new Date(b.end_time).toISOString().split('T')[0] 
+                });
+              }}
+              className="px-1.5 py-0.5 bg-slate-900 text-white rounded text-[9px] font-black uppercase cursor-move hover:bg-blue-600 transition-all"
+              title={b.title}
+            >
+              {b.title.slice(0, 3)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <button
+          onClick={() => {
+            setNewBookingData({ roomId: room.id, date: dateStr, title: '' });
+            setIsNewBookingModalOpen(true);
+          }}
+          className="w-full h-full opacity-0 hover:opacity-100 text-blue-500 text-xl font-light transition-opacity"
+        >
+          +
+        </button>
+      )}
+      {/* 🔴 BİTİŞ 🔴 */}
+    </td>
+  );
+})}
+
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODALLAR */}
 
-
-      {selectedDetail && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{selectedDetail.room.name}</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedDetail.day.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} • {selectedDetail.bookings.length}/{selectedDetail.room.capacity} DOLU</p>
-              </div>
-              <button onClick={() => setSelectedDetail(null)} className="text-slate-300 hover:text-slate-900 text-3xl">×</button>
-            </div>
-            <div className="space-y-3">
-                    {selectedDetail.bookings
-          .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()) 
-          .map(b => (
-                <div key={b.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border border-slate-100">
-                  <div className="font-black text-slate-800 uppercase text-sm">{b.title}</div>
-                  <button onClick={() => {
-                    setEditingBooking(b);
-                    setEditForm({ title: b.title, start_date: new Date(b.start_time).toISOString().split('T')[0], end_date: new Date(b.end_time).toISOString().split('T')[0] });
-                    setSelectedDetail(null);
-                  }} className="bg-white px-4 py-2 rounded-xl font-black text-[10px] uppercase border border-slate-200 hover:bg-slate-900 hover:text-white transition-all">YÖNET</button>
-                </div>
-              ))}
-              {selectedDetail.bookings.length < selectedDetail.room.capacity && (
-                <button onClick={() => {
-                  setNewBookingData({ roomId: selectedDetail.room.id, date: selectedDetail.day.toISOString().split('T')[0], title: '' });
-                  setIsNewBookingModalOpen(true);
-                  setSelectedDetail(null);
-                }} className="w-full mt-4 p-4 bg-blue-50 text-blue-600 border-2 border-dashed border-blue-100 rounded-2xl font-black text-[11px] uppercase hover:bg-blue-600 hover:text-white transition-all">+ YENİ KİŞİ EKLE</button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* CREATE/EDIT MODAL */}
       {(isNewBookingModalOpen || editingBooking) && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
           <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in fade-in zoom-in-95">
