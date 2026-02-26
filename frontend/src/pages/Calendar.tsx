@@ -1,10 +1,11 @@
 import { useEffect, useState, Fragment } from 'react';
 import { getRooms } from '../api/rooms';
-import { getBookings } from '../api/bookings';
+import { getBookings, createBooking, updateBooking, deleteBooking } from '../api/bookings';
 import type { Room, Booking } from '../types/index';
 
-// 15 günlük periyot oluştur (bugünden başlayarak)
-function getDaysForPeriod(startDate: Date, daysCount: number = 15) {
+
+// --- YARDIMCI FONKSİYONLAR ---
+function getDaysForPeriod(startDate: Date, daysCount: number) {
   const days = [];
   for (let i = 0; i < daysCount; i++) {
     const date = new Date(startDate);
@@ -14,14 +15,23 @@ function getDaysForPeriod(startDate: Date, daysCount: number = 15) {
   return days;
 }
 
-function getOccupancyColor(bookedCount: number, capacity: number): string {
-  if (bookedCount === 0) return 'bg-gray-50 hover:bg-gray-100';
-  if (bookedCount >= capacity) return 'bg-red-100 hover:bg-red-200 border-red-300';
-  
-  const ratio = bookedCount / capacity;
-  if (ratio <= 0.33) return 'bg-green-100 hover:bg-green-200 border-green-300';
-  if (ratio <= 0.66) return 'bg-yellow-100 hover:bg-yellow-200 border-yellow-300';
-  return 'bg-orange-100 hover:bg-orange-200 border-orange-300';
+function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boolean): string {
+  // 1. Durum: ODA TAM DOLU (Kırmızı)
+  if (bookedCount >= capacity) {
+    return 'bg-red-600 text-white border-red-700 shadow-inner'; 
+  }
+
+  // 2. Durum: ODA KISMİ DOLU / YER VAR (Sarı)
+  if (bookedCount > 0) {
+    // text-slate-900 yaptık çünkü sarı üzerinde beyaz okunmaz
+    return 'bg-yellow-400 text-slate-900 border-yellow-500 shadow-md'; 
+  }
+
+  // 3. Durum: ODA TAMAMEN BOŞ
+  if (isWeekend) {
+    return 'bg-slate-300 hover:bg-slate-400 border-slate-400 text-slate-600'; // Koyu gri hafta sonu
+  }
+  return 'bg-white hover:bg-slate-50 border-slate-100 text-slate-400'; // Tertemiz iş günü
 }
 
 export function Calendar() {
@@ -29,335 +39,249 @@ export function Calendar() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState(new Date());
-  const [daysToShow, setDaysToShow] = useState(30);
+  const daysToShow = 20; // Sabit bir görünüm (örneğin 20 gün) daha dengeli durur
+
   const [selectedDetail, setSelectedDetail] = useState<{room: Room, day: Date, bookings: Booking[]} | null>(null);
+  const [isNewBookingModalOpen, setIsNewBookingModalOpen] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+
+  const [newBookingData, setNewBookingData] = useState({ roomId: 0, date: '', title: '' });
+  const [editForm, setEditForm] = useState({ title: '', start_date: '', end_date: '' });
 
   const days = getDaysForPeriod(startDate, daysToShow);
-
-  // Tarih aralığını formatla
-  const dateRangeText = `${startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${days[days.length - 1].toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-
-  useEffect(() => {
-    Promise.all([getRooms(), getBookings()]).then(([r, b]) => {
-      setRooms(r.data);
-      setBookings(b.data);
-      setLoading(false);
-    });
-  }, []);
-
-  function getBookingsForRoomAndDay(roomId: number, day: Date) {
-    return bookings.filter((b) => {
-      const bookingRoomId = b.room?.id || (b as any).room_id;
-      if (Number(bookingRoomId) !== Number(roomId)) return false;
-
-      const start = new Date(b.start_time);
-      const end = new Date(b.end_time);
-      
-      const checkDayStart = new Date(day);
-      checkDayStart.setHours(0, 0, 0, 0);
-      
-      const checkDayEnd = new Date(day);
-      checkDayEnd.setHours(23, 59, 59, 999);
-
-      return start <= checkDayEnd && end >= checkDayStart;
-    });
-  }
-
-  const goBackward = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() - daysToShow);
-    setStartDate(newDate);
-  };
-
-  const goForward = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() + daysToShow);
-    setStartDate(newDate);
-  };
-
-  const goToToday = () => setStartDate(new Date());
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading calendar...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const floors = [
-    { prefix: 'F', label: 'First Floor', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-    { prefix: 'M', label: 'Mezzanine', color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
-    { prefix: 'S', label: 'Second Floor', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
-  ];
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  const fetchData = async () => {
+    try {
+      const [r, b] = await Promise.all([getRooms(), getBookings()]);
+      setRooms(r.data);
+      setBookings(b.data);
+      setLoading(false);
+    } catch (err) {
+      console.error("Veri çekme hatası:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // --- NAVİGASYON ---
+  const moveNext = () => {
+    const newDate = new Date(startDate);
+    newDate.setDate(startDate.getDate() + 7); // 1 hafta ileri git
+    setStartDate(newDate);
+  };
+
+  const movePrev = () => {
+    const newDate = new Date(startDate);
+    newDate.setDate(startDate.getDate() - 7); // 1 hafta geri git
+    setStartDate(newDate);
+  };
+
+  // --- CRUD İŞLEMLERİ ---
+  const handleCreate = async () => {
+    try {
+      await createBooking({
+        room_id: newBookingData.roomId,
+        title: newBookingData.title || "Yeni Rezervasyon",
+        start_time: `${newBookingData.date}T09:00:00`,
+        end_time: `${newBookingData.date}T17:00:00`,
+      });
+      setIsNewBookingModalOpen(false);
+      fetchData();
+    } catch (err) { alert("Hata!"); }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingBooking) return;
+    try {
+      await updateBooking(editingBooking.id, {
+        title: editForm.title,
+        start_time: `${editForm.start_date}T09:00:00`,
+        end_time: `${editForm.end_date}T17:00:00`,
+      });
+      setEditingBooking(null);
+      fetchData();
+    } catch (err) { alert("Hata!"); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Silmek istediğinize emin misiniz?")) return;
+    try {
+      await deleteBooking(id);
+      setEditingBooking(null);
+      fetchData();
+    } catch (err) { alert("Hata!"); }
+  };
+
+  function getBookingsForRoomAndDay(roomId: number, day: Date) {
+    const dayTimestamp = new Date(day).setHours(0,0,0,0);
+    return bookings.filter((b) => {
+      const bRoomId = b.room?.id || (b as any).room_id;
+      if (Number(bRoomId) !== Number(roomId)) return false;
+      const start = new Date(b.start_time).setHours(0,0,0,0);
+      const end = new Date(b.end_time).setHours(0,0,0,0);
+      return dayTimestamp >= start && dayTimestamp <= end;
+    });
+  }
+
+  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 animate-pulse">Calendar</div>;
+
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      {/* Header */}
-      <div className="max-w-[95vw] mx-auto mb-8">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Calendar View</h1>
-              <p className="text-gray-500 text-sm mt-1">{dateRangeText}</p>
-            </div>
-            
-            <div className="flex flex-wrap gap-2">
-              {/* Period selector */}
-              <select 
-                value={daysToShow}
-                onChange={(e) => setDaysToShow(Number(e.target.value))}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold transition-colors text-sm outline-none cursor-pointer"
-              >
-                <option value={7}>7 Days</option>
-                <option value={14}>14 Days</option>
-                <option value={15}>15 Days</option>
-                <option value={30}>30 Days</option>
-              </select>
-
-              <button 
-                onClick={goBackward} 
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold transition-colors text-sm"
-              >
-                ← Prev {daysToShow}d
-              </button>
-              <button 
-                onClick={goToToday} 
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors text-sm"
-              >
-                Today
-              </button>
-              <button 
-                onClick={goForward} 
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold transition-colors text-sm"
-              >
-                Next {daysToShow}d →
-              </button>
-            </div>
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8">
+      
+      {/* HEADER (15/30 Kaldırıldı, Oklar ve Bugün öne çıktı) */}
+      <div className="max-w-[98vw] mx-auto mb-6 bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-xl">M</div>
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Matrix v2</h1>
+            <p className="text-blue-600 text-[10px] font-black uppercase tracking-widest mt-1">
+              {startDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+            </p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+          <button onClick={movePrev} className="p-3 hover:bg-white hover:text-blue-600 rounded-xl transition-all font-bold">◀</button>
+          <button onClick={() => setStartDate(new Date())} className="px-6 py-2 bg-white text-slate-900 rounded-xl font-black text-[11px] uppercase shadow-sm border">BUGÜN</button>
+          <button onClick={moveNext} className="p-3 hover:bg-white hover:text-blue-600 rounded-xl transition-all font-bold">▶</button>
         </div>
       </div>
 
-      {/* Calendar Table */}
-      <div className="max-w-[95vw] mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="border-collapse w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b-2 border-gray-200">
-                  <th className="border-r border-gray-200 p-3 sticky left-0 z-20 bg-gray-50 min-w-[140px] text-left">
-                    <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Room</span>
+      {/* TABLE */}
+      <div className="max-w-[98vw] mx-auto bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50">
+                <th className="sticky left-0 z-30 bg-slate-50 p-6 min-w-[180px] border-r border-slate-100 text-left font-black uppercase text-slate-400 text-[10px]">Kaynaklar</th>
+                {days.map(day => (
+                  <th key={day.toISOString()} className={`p-4 border-r border-slate-100 min-w-[70px] ${day.getTime() === today.getTime() ? 'bg-blue-50/50' : ''}`}>
+                    <div className="text-[9px] font-black text-slate-400 uppercase mb-1">{day.toLocaleDateString('tr-TR', {weekday: 'short'})}</div>
+                    <div className={`text-xl font-black ${day.getTime() === today.getTime() ? 'text-blue-600' : 'text-slate-800'}`}>{day.getDate()}</div>
                   </th>
-                  {days.map(day => {
-                    const isToday = day.getTime() === today.getTime();
-                    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                    const dayName = day.toLocaleDateString('en-GB', { weekday: 'short' });
-                    const monthName = day.toLocaleDateString('en-GB', { month: 'short' });
-                    
-             return (
-              <th 
-  key={day.toISOString()} 
-  className={`border-r border-gray-300 p-2 min-w-[50px] 
-    ${isToday ? 'bg-blue-100' : ''} 
-    ${isWeekend ? 'bg-gray-200' : 'bg-gray-50'}`} // Daha koyu gri başlık
->
-    <div className="text-center">
-      <div className={`text-[10px] font-bold uppercase 
-        ${isToday ? 'text-blue-600' : isWeekend ? 'text-amber-700' : 'text-gray-500'}`}> 
-        {dayName}
-      </div>
-      <div className={`text-lg font-black 
-        ${isToday ? 'text-blue-600' : isWeekend ? 'text-amber-900' : 'text-gray-800'}`}>
-        {day.getDate()}
-      </div>
-      {/* ... */}
-    </div>
-  </th>
-);
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {floors.map((floor) => {
-                  const floorRooms = rooms.filter((r) => r.name?.[0].toUpperCase() === floor.prefix);
-                  
-                  return (
-                    <Fragment key={floor.prefix}>
-                      {/* Floor Header */}
-                      <tr>
-                        <td
-                          colSpan={days.length + 1}
-                          className={`border-y-2 ${floor.border} px-4 py-2 font-black text-sm ${floor.color} ${floor.bg}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className={`h-3 w-3 rounded-full ${floor.color.replace('text-', 'bg-')}`}></div>
-                            {floor.label}
-                          </div>
-                        </td>
-                      </tr>
-                      
-                      {/* Room Rows */}
-                      {floorRooms.map((room) => (
-                        <tr key={room.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="border-r border-gray-200 px-4 py-3 font-bold bg-white sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                            <div className="flex items-center gap-2">
-                              <div className={`h-2 w-2 rounded-full ${floor.color.replace('text-', 'bg-')}`}></div>
-                              <span className="text-sm text-gray-800">{room.name}</span>
-                            </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              {room.capacity} 👤
-                            </div>
-                          </td>
-                          
-                          {days.map((day) => {
-                            const dayBookings = getBookingsForRoomAndDay(room.id, day);
-                            const bookedCount = dayBookings.length;
-                            const availableCapacity = room.capacity - bookedCount;
-                            const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                            const isToday = day.getTime() === today.getTime();
-                            const colorClass = getOccupancyColor(bookedCount, room.capacity);
-                            
-                            return (
-<td
-  key={day.toISOString()}
-  onClick={() => {
-    // Sadece rezervasyon varsa modalı aç
-    if (dayBookings.length > 0) {
-      setSelectedDetail({ room, day, bookings: dayBookings });
-    }
-  }}
-  className={`
-    border-r border-gray-200 text-center transition-all relative
-    ${bookedCount > 0 ? 'cursor-pointer hover:brightness-95' : ''}
-    ${isToday ? 'ring-2 ring-blue-500 ring-inset z-10' : ''}
-    
-    /* HAFTA SONU KOYU ŞERİT MANTIĞI */
-    ${isWeekend 
-      ? (bookedCount === 0 ? 'bg-gray-200/60' : colorClass) 
-      : (bookedCount === 0 ? 'bg-white' : colorClass) 
-    }
-  `}
->
-  {/* Hücre İçeriği Geri Geldi */}
-  {bookedCount > 0 ? (
-    <div className="py-2 px-1">
-      <div className="font-black text-base text-gray-800 leading-none">
-        {availableCapacity}
-      </div>
-      <div className={`text-[9px] font-bold uppercase tracking-tighter mt-1 ${isWeekend ? 'text-gray-600' : 'text-gray-500'}`}>
-        {bookedCount} booking
-      </div>
-    </div>
-  ) : (
-    // Boş hücrelerde hafif bir artı simgesi veya boşluk bırakabilirsin
-    <div className="h-10"></div>
-  )}
-</td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="mt-6 bg-white rounded-xl p-4 border border-gray-200">
-          <h3 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-3">Legend</h3>
-          <div className="flex flex-wrap gap-4 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-gray-50 border border-gray-300 rounded"></div>
-              <span className="text-gray-700 font-medium">Empty</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-green-100 border border-green-300 rounded"></div>
-              <span className="text-gray-700 font-medium">Low (≤33%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-yellow-100 border border-yellow-300 rounded"></div>
-              <span className="text-gray-700 font-medium">Medium (≤66%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-orange-100 border border-orange-300 rounded"></div>
-              <span className="text-gray-700 font-medium">High (&lt;100%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-red-100 border border-red-300 rounded"></div>
-              <span className="text-gray-700 font-medium">Full (100%)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Detail Modal */}
-      {selectedDetail && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-gray-100">
-              <div>
-                <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tight">
-                  {selectedDetail.room.name}
-                </h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  {selectedDetail.day.toLocaleDateString('en-GB', { 
-                    weekday: 'long', 
-                    day: 'numeric', 
-                    month: 'long',
-                    year: 'numeric'
-                  })}
-                </p>
-                <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full">
-                  <span className="text-xs font-bold text-blue-700">
-                    {selectedDetail.room.capacity - selectedDetail.bookings.length} / {selectedDetail.room.capacity} available
-                  </span>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedDetail(null)} 
-                className="text-gray-400 hover:text-gray-600 text-3xl leading-none"
-              >
-                ×
-              </button>
-            </div>
+                ))}
+              </tr>
+            </thead>
+           <tbody>
+  {['F', 'M', 'S'].map(floorPrefix => (
+    <Fragment key={floorPrefix}>
+      <tr className="bg-slate-50/30 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+        <td colSpan={days.length + 1} className="px-8 py-3 border-y border-slate-100">KAT {floorPrefix}</td>
+      </tr>
+      {rooms.filter(r => r.name?.[0].toUpperCase() === floorPrefix).map(room => (
+        <tr key={room.id} className="border-b border-slate-50 group">
+          <td className="sticky left-0 z-20 bg-white p-6 border-r border-slate-100 font-black text-slate-800 text-sm uppercase">{room.name}</td>
+          {days.map(day => {
+            const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+            const dayBookings = getBookingsForRoomAndDay(room.id, day);
+            const bookedCount = dayBookings.length;
             
-            <div className="space-y-3 max-h-[400px] overflow-y-auto">
-              {selectedDetail.bookings.map((b) => (
-                <div key={b.id} className="p-4 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-xl border-l-4 border-blue-500 hover:shadow-md transition-shadow">
-                  <div className="font-black text-sm text-gray-800 uppercase tracking-tight">{b.title}</div>
-                  <div className="text-xs text-gray-600 mt-2 flex items-center gap-2">
-                    <span>⏰</span>
-                    <span className="font-bold">
-                      {new Date(b.start_time).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'})} - 
-                      {new Date(b.end_time).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'})}
-                    </span>
-                  </div>
-                  <div className="text-xs mt-2 text-blue-700 font-bold flex items-center gap-1">
-                    <span>👤</span>
-                    <span>{b.user?.name || 'Unknown User'}</span>
-                  </div>
+            return (
+              <td key={day.toISOString()} 
+                  onClick={() => bookedCount > 0 ? setSelectedDetail({ room, day, bookings: dayBookings }) : (setNewBookingData({ roomId: room.id, date: day.toISOString().split('T')[0], title: '' }), setIsNewBookingModalOpen(true))}
+                  className={`p-1 border-r border-slate-50 text-center cursor-pointer h-20 group/cell relative transition-all ${getOccupancyColor(bookedCount, room.capacity, isWeekend)}`}
+              >
+                <div className="flex flex-col items-center justify-center">
+                  {bookedCount > 0 ? (
+                    <>
+                      <span className="text-sm font-black leading-none">{bookedCount}</span>
+                      {bookedCount < room.capacity && (
+                        <span className="text-[8px] font-bold uppercase mt-1 opacity-50 whitespace-nowrap">
+                          {room.capacity - bookedCount} Boş
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="opacity-0 group-hover/cell:opacity-100 text-blue-500 font-black text-2xl transition-all">+</span>
+                  )}
                 </div>
-              ))}
-            </div>
+              </td>
+            );
+          })}
+        </tr>
+      ))}
+    </Fragment>
+  ))}
+</tbody>
+          </table>
+        </div>
+      </div>
 
-            <button 
-              onClick={() => setSelectedDetail(null)}
-              className="mt-6 w-full py-3 bg-gray-900 text-white rounded-xl font-black hover:bg-black transition-colors uppercase text-sm tracking-wider"
-            >
-              Close
-            </button>
+      {/* MODALLAR (Öncekiyle aynı, DB bağlantıları hazır) */}
+      {/* ... Detay ve Create/Edit Modalları ... */}
+    {/* DETAY MODALI (Güncellenmiş) */}
+{selectedDetail && (
+  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{selectedDetail.room.name}</h3>
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Kapasite: {selectedDetail.room.capacity} / Dolu: {selectedDetail.bookings.length}</p>
+        </div>
+        <button onClick={() => setSelectedDetail(null)} className="text-slate-400 text-3xl">×</button>
+      </div>
+
+      <div className="space-y-3">
+        {/* Mevcut Kayıtlar */}
+        {selectedDetail.bookings.map(b => (
+          <div key={b.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border">
+            <div className="font-black text-slate-800 uppercase text-sm">{b.title}</div>
+            <button onClick={() => {
+              setEditingBooking(b);
+              setEditForm({ title: b.title, start_date: new Date(b.start_time).toISOString().split('T')[0], end_date: new Date(b.end_time).toISOString().split('T')[0] });
+              setSelectedDetail(null);
+            }} className="bg-white px-4 py-2 rounded-lg font-black text-[10px] uppercase border hover:bg-slate-900 hover:text-white transition-all">YÖNET</button>
+          </div>
+        ))}
+
+        {/* --- YENİ KAYIT BUTONU (Eğer Kapasite Varsa) --- */}
+        {selectedDetail.bookings.length < selectedDetail.room.capacity && (
+          <button 
+            onClick={() => {
+              setNewBookingData({ 
+                roomId: selectedDetail.room.id, 
+                date: selectedDetail.day.toISOString().split('T')[0], 
+                title: '' 
+              });
+              setIsNewBookingModalOpen(true);
+              setSelectedDetail(null); // Detay modalını kapat
+            }}
+            className="w-full mt-4 p-4 bg-blue-50 text-blue-600 border-2 border-dashed border-blue-200 rounded-2xl font-black text-xs uppercase hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all flex items-center justify-center gap-2"
+          >
+            <span className="text-xl">+</span> YENİ KİŞİ EKLE
+          </button>
+        )}
+      </div>
+    </div>
+  </div>
+)}
+
+      {(isNewBookingModalOpen || editingBooking) && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">{editingBooking ? 'GÜNCELLE' : 'YENİ KAYIT'}</h2>
+              {editingBooking && <button onClick={() => handleDelete(editingBooking.id)} className="text-red-500 font-black text-[10px] uppercase hover:underline">SİL</button>}
+            </div>
+            <div className="space-y-6">
+              <input type="text" value={editingBooking ? editForm.title : newBookingData.title} onChange={(e) => editingBooking ? setEditForm({...editForm, title: e.target.value}) : setNewBookingData({...newBookingData, title: e.target.value})} className="w-full bg-slate-50 border-0 rounded-2xl px-6 py-4 font-black text-lg outline-none uppercase" placeholder="BAŞLIK..." />
+              <div className="grid grid-cols-2 gap-4">
+                <input type="date" value={editingBooking ? editForm.start_date : newBookingData.date} onChange={(e) => editingBooking ? setEditForm({...editForm, start_date: e.target.value}) : setNewBookingData({...newBookingData, date: e.target.value})} className="bg-slate-50 p-4 rounded-2xl font-black text-center" />
+                <input type="date" value={editingBooking ? editForm.end_date : newBookingData.date} disabled className="bg-slate-50 p-4 rounded-2xl font-black text-center opacity-50 cursor-not-allowed" />
+              </div>
+            </div>
+            <div className="flex gap-4 mt-10">
+              <button onClick={editingBooking ? handleUpdate : handleCreate} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black uppercase shadow-lg">ONAYLA</button>
+              <button onClick={() => { setIsNewBookingModalOpen(false); setEditingBooking(null); }} className="flex-1 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase">İPTAL</button>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
