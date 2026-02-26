@@ -160,24 +160,26 @@ export function Calendar() {
                     const dayName = day.toLocaleDateString('en-GB', { weekday: 'short' });
                     const monthName = day.toLocaleDateString('en-GB', { month: 'short' });
                     
-                    return (
-                      <th 
-                        key={day.toISOString()} 
-                        className={`border-r border-gray-200 p-2 min-w-[50px] ${isToday ? 'bg-blue-100' : ''} ${isWeekend ? 'bg-gray-100' : ''}`}
-                      >
-                        <div className="text-center">
-                          <div className={`text-[10px] font-bold uppercase ${isToday ? 'text-blue-600' : 'text-gray-500'}`}>
-                            {dayName}
-                          </div>
-                          <div className={`text-lg font-black ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
-                            {day.getDate()}
-                          </div>
-                          <div className={`text-[9px] font-bold ${isToday ? 'text-blue-500' : 'text-gray-400'}`}>
-                            {monthName}
-                          </div>
-                        </div>
-                      </th>
-                    );
+             return (
+              <th 
+  key={day.toISOString()} 
+  className={`border-r border-gray-300 p-2 min-w-[50px] 
+    ${isToday ? 'bg-blue-100' : ''} 
+    ${isWeekend ? 'bg-gray-200' : 'bg-gray-50'}`} // Daha koyu gri başlık
+>
+    <div className="text-center">
+      <div className={`text-[10px] font-bold uppercase 
+        ${isToday ? 'text-blue-600' : isWeekend ? 'text-amber-700' : 'text-gray-500'}`}> 
+        {dayName}
+      </div>
+      <div className={`text-lg font-black 
+        ${isToday ? 'text-blue-600' : isWeekend ? 'text-amber-900' : 'text-gray-800'}`}>
+        {day.getDate()}
+      </div>
+      {/* ... */}
+    </div>
+  </th>
+);
                   })}
                 </tr>
               </thead>
@@ -222,30 +224,41 @@ export function Calendar() {
                             const colorClass = getOccupancyColor(bookedCount, room.capacity);
                             
                             return (
-                              <td
-                                key={day.toISOString()}
-                                onClick={() => {
-                                  if (dayBookings.length > 0) {
-                                    setSelectedDetail({ room, day, bookings: dayBookings });
-                                  }
-                                }}
-                                className={`
-                                  border-r border-gray-200 text-center transition-all
-                                  ${bookedCount > 0 ? 'cursor-pointer' : ''}
-                                  ${isWeekend && bookedCount === 0 ? 'bg-gray-50' : colorClass}
-                                  ${isToday ? 'ring-2 ring-blue-400 ring-inset' : ''}
-                                  ${bookedCount > 0 ? 'border' : ''}
-                                `}
-                              >
-                                {bookedCount > 0 && (
-                                  <div className="py-2 px-1">
-                                    <div className="font-black text-base text-gray-800">{bookedCount}</div>
-                                    <div className="text-[9px] font-bold text-gray-600 uppercase tracking-wider">
-                                      {availableCapacity} free
-                                    </div>
-                                  </div>
-                                )}
-                              </td>
+<td
+  key={day.toISOString()}
+  onClick={() => {
+    // Sadece rezervasyon varsa modalı aç
+    if (dayBookings.length > 0) {
+      setSelectedDetail({ room, day, bookings: dayBookings });
+    }
+  }}
+  className={`
+    border-r border-gray-200 text-center transition-all relative
+    ${bookedCount > 0 ? 'cursor-pointer hover:brightness-95' : ''}
+    ${isToday ? 'ring-2 ring-blue-500 ring-inset z-10' : ''}
+    
+    /* HAFTA SONU KOYU ŞERİT MANTIĞI */
+    ${isWeekend 
+      ? (bookedCount === 0 ? 'bg-gray-200/60' : colorClass) 
+      : (bookedCount === 0 ? 'bg-white' : colorClass) 
+    }
+  `}
+>
+  {/* Hücre İçeriği Geri Geldi */}
+  {bookedCount > 0 ? (
+    <div className="py-2 px-1">
+      <div className="font-black text-base text-gray-800 leading-none">
+        {availableCapacity}
+      </div>
+      <div className={`text-[9px] font-bold uppercase tracking-tighter mt-1 ${isWeekend ? 'text-gray-600' : 'text-gray-500'}`}>
+        {bookedCount} booking
+      </div>
+    </div>
+  ) : (
+    // Boş hücrelerde hafif bir artı simgesi veya boşluk bırakabilirsin
+    <div className="h-10"></div>
+  )}
+</td>
                             );
                           })}
                         </tr>
