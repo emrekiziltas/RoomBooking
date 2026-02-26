@@ -125,16 +125,13 @@ class BookingController extends Controller
 {
     public function __construct(private BookingService $service) {}
 
-    public function index(Request $request)
+public function index(Request $request)
 {
     $bookings = Booking::with(['room', 'user'])
-        // Dünün başlangıcından (00:00:00) büyük olanları getirir
         ->where('start_time', '>=', now()->subDay()->startOfDay())
-        
         ->when($request->room_id, fn($q) => $q->where('room_id', $request->room_id))
-        ->when($request->start, fn($q) => $q->where('start_time', '>=', $request->start))
-        ->when($request->end, fn($q) => $q->where('end_time', '<=', $request->end))
-        ->orderBy('start_time', 'asc')
+        // 'updated_at' sütununa göre azalan (DESC) sıralama ekliyoruz:
+        ->orderBy('updated_at', 'desc') 
         ->get();
 
     return BookingResource::collection($bookings);
@@ -240,16 +237,14 @@ public function move(MoveBookingRequest $request, $id)
         return new BookingResource($booking->fresh(['room', 'user']));
     }
 
-    public function update(Request $request, $id)
+public function update(Request $request, $id)
 {
     $booking = Booking::findOrFail($id);
     $user = auth()->user();
 
+    // Yetki Kontrolü
     if ($user->role !== 'admin' && $booking->user_id !== $user->id) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Yetkiniz yok!'
-        ], 403);
+        return response()->json(['success' => false, 'message' => 'Yetkiniz yok!'], 403);
     }
 
     $request->validate([
@@ -261,42 +256,41 @@ public function move(MoveBookingRequest $request, $id)
             'date',
             'after:' . ($request->start_time ?? $booking->start_time),
         ],
-    ], [
-        'end_time.after' => 'End time must be after start time.',
     ]);
 
-    if ($request->has('start_time') || $request->has('end_time')) {
+    // Kapasite ve Çakışma Kontrolü
+    if ($request->has('start_time') || $request->has('end_time') || $request->has('room_id')) {
         $startTime = $request->start_time ?? $booking->start_time;
         $endTime   = $request->end_time ?? $booking->end_time;
+        $roomId    = $request->room_id ?? $booking->room_id;
+        
+        $room = Room::findOrFail($roomId);
 
-        // DEBUG: Çakışan booking'leri görelim
-        $conflicts = Booking::where('room_id', $booking->room_id)
-            ->where('id', '!=', $id)
-            ->where(function($q) use ($startTime, $endTime) {
-                $q->where(function($q2) use ($startTime, $endTime) {
-                    $q2->where('start_time', '<', $endTime)
-                       ->where('end_time', '>', $startTime);
-                });
-            })
-            ->get(['id', 'title', 'start_time', 'end_time']);
+        // ÖNEMLİ DÜZELTME: 
+        // 1. Güncellenen kaydın kendisini hariç tut (where('id', '!=', $id))
+        // 2. Çakışanların sayısını al (count())
+        $overlapCount = Booking::where('room_id', $roomId)
+            ->where('id', '!=', $id) // Kendisini sayma
+            ->where(function ($query) use ($startTime, $endTime) {
+                $query->where('start_time', '<', $endTime)
+                      ->where('end_time', '>', $startTime);
+            })->count();
 
-        if ($conflicts->count() > 0) {
+        // Kapasite Kontrolü: Mevcutlar + 1 (güncellenen kayıt) > Kapasite mi?
+        if ($overlapCount >= $room->capacity) {
             return response()->json([
                 'success' => false,
-                'message' => 'Time slot is not available!',
+                'message' => "Bu oda kapasitesi dolu! Kapasite: {$room->capacity}, Diğer Doluluk: {$overlapCount}",
                 'debug' => [
-                    'trying_to_update' => [
-                        'booking_id' => $id,
-                        'start' => $startTime,
-                        'end' => $endTime
-                    ],
-                    'conflicts_with' => $conflicts
+                    'current_booking_id' => $id,
+                    'conflicts_count' => $overlapCount
                 ]
-            ], 409);
+            ], 422);
         }
     }
 
-    $booking->update($request->only(['title', 'color', 'start_time', 'end_time']));
+    // Güncelleme işlemi
+    $booking->update($request->only(['title', 'color', 'start_time', 'end_time', 'room_id']));
 
     return new BookingResource($booking->fresh(['room', 'user']));
 }
