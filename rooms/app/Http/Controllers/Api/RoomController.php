@@ -16,17 +16,17 @@ class RoomController extends Controller
         ]);
     }
 
-    public function update(Request $request, $id)
+public function update(Request $request, $id)
 {
     $room = Room::findOrFail($id);
     
     $validated = $request->validate([
         'name' => 'sometimes|string|max:255',
         'capacity' => 'sometimes|integer|min:1|max:4',
-        'features' => 'sometimes|array',
-        'features.blackboard' => 'sometimes|boolean',
+        'features' => 'sometimes|array', // Ana objenin array/json olduğunu doğrula
     ]);
 
+    // $validated['features'] artık içindeki tüm alt anahtarlarla (printer, wifi vb.) birlikte gelir.
     $room->update($validated);
 
     return response()->json([
