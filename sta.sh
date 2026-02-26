@@ -6,7 +6,7 @@ fuser -k 8000/tcp 2>/dev/null
 pkill -f "node" 2>/dev/null
 
 echo "🚀 Backend başlatılıyor..."
-cd /home/emre/booking-project/rooms || exit
+cd /home/emre/Booking-project/rooms || exit
 php artisan serve --port=8000 &
 BACKEND_PID=$!
 
@@ -14,7 +14,7 @@ BACKEND_PID=$!
 sleep 2
 
 echo "🎨 Frontend başlatılıyor..."
-cd /home/emre/booking-project/frontend || exit
+cd /home/emre/Booking-project/frontend || exit
 # NOT: Buradaki 'dev' kısmını package.json'daki script adınla değiştir (dev, start vb.)
 npm run dev & 
 FRONTEND_PID=$!

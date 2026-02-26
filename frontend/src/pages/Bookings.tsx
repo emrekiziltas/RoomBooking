@@ -50,21 +50,39 @@ export function Bookings() {
   }, [bookings, selectedRoomId]);
 
   const groupedBookings = useMemo(() => {
-    const groups: { [key: string]: Booking[] } = {};
-    const sorted = [...filteredBookings].sort((a, b) => 
+  const groups: { [key: string]: Booking[] } = {};
+    const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const sorted = [...filteredBookings]
+    .filter(booking => {
+      // Sadece bugün ve sonrasını al
+      const bookingDate = new Date(booking.start_time);
+      return bookingDate >= today;
+    })
+    .sort((a, b) => 
       new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
     );
 
-    sorted.forEach(booking => {
-      const date = new Date(booking.start_time).toLocaleDateString('tr-TR', { 
-        day: '2-digit', month: 'long', weekday: 'long' 
-      });
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(booking);
+  sorted.forEach(booking => {
+    const dateStr = booking.start_time.slice(0, 10);
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const localDate = new Date(year, month - 1, day);
+    
+    const date = localDate.toLocaleDateString('en-GB', { 
+      day: '2-digit', 
+      month: 'long', 
+      weekday: 'long',
+      timeZone: 'Europe/London'
     });
-    return groups;
-  }, [filteredBookings]);
-
+    
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(booking);
+  });
+  
+  return groups;
+}, [filteredBookings]);
+  
   const toggleDay = (date: string) => {
     setExpandedDays(prev => ({ ...prev, [date]: !prev[date] }));
   };
