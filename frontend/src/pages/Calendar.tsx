@@ -206,23 +206,20 @@ useEffect(() => {
 const handleStartDateChange = (newStartStr: string) => {
   if (!newStartStr) return;
   
+  // Hem editForm hem de newBookingData için süreyi belirle
+  const currentDuration = editingBooking ? (editForm.duration || 1) : 1;
+  
   const newStartDate = new Date(newStartStr);
   const newEndDate = new Date(newStartDate);
+  newEndDate.setDate(newStartDate.getDate() + currentDuration);
   
-  // Örn: Duration 1 ise, 01.03.2026 üzerine 1 gün ekler -> 02.03.2026 olur.
-  newEndDate.setDate(newStartDate.getDate() + (editForm.duration || 0));
+  const formattedEnd = newEndDate.toISOString().split('T')[0];
   
-  // ISO formatına çevirirken yerel saat dilimi kaymasını önlemek için manuel format:
-  const y = newEndDate.getFullYear();
-  const m = String(newEndDate.getMonth() + 1).padStart(2, '0');
-  const d = String(newEndDate.getDate()).padStart(2, '0');
-  const formattedEnd = `${y}-${m}-${d}`;
-  
-  setEditForm({
-    ...editForm,
-    start_date: newStartStr,
-    end_date: formattedEnd
-  });
+  if (editingBooking) {
+    setEditForm({ ...editForm, start_date: newStartStr, end_date: formattedEnd });
+  } else {
+    setNewBookingData({ ...newBookingData, startDate: newStartStr, endDate: formattedEnd });
+  }
 };
 
   function getBookingsForRoomAndDay(roomId: number, day: Date) {
@@ -288,7 +285,7 @@ const handleStartDateChange = (newStartStr: string) => {
                 <Fragment key={floor}>
                   <tr className="bg-slate-800 text-[11px] font-black uppercase tracking-[0.5em] text-white">
                     <td className="sticky left-0 z-30 bg-slate-800 px-6 py-3 border-y border-slate-700 text-center shadow-md">Floor {floor}</td>
-                    <td colSpan={days.length} className="border-y border-slate-700 opacity-20 italic pl-4">InI Multi-Resource Management</td>
+                    <td colSpan={days.length} className="border-y border-slate-700 opacity-20 italic pl-4"></td>
                   </tr>
                   {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
                     <tr key={room.id} className="group/row border-b border-slate-100">

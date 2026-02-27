@@ -10,6 +10,7 @@ import { Bookings } from './pages/Bookings';
 import { Calendar } from './pages/Calendar';
 import { Available } from './pages/Available';
 import { AvailableRanges } from './pages/AvailableRanges';
+import { Reports } from './pages/Reports';
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ function App() {
           <Route path="/calendar" element={<PrivateRoute><Calendar /></PrivateRoute>} />
           <Route path="/available" element={<PrivateRoute><Available /></PrivateRoute>} />
           <Route path="/available-ranges" element={<PrivateRoute><AvailableRanges /></PrivateRoute>} />
+          <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
