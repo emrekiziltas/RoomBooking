@@ -3,16 +3,7 @@ import { getRooms } from '../api/rooms';
 import { getBookings, createBooking, updateBooking, deleteBooking } from '../api/bookings';
 import type { Room, Booking } from '../types/index';
 
-// Dosyanın en üstüne, importların altına ekle:
-const scrollbarHideStyle = {
-  msOverflowStyle: 'none',
-  scrollbarWidth: 'none',
-  '&::-webkit-scrollbar': {
-    display: 'none'
-  }
-} as any;
-
-// --- YARDIMCI FONKSİYONLAR ---
+// --- HELPERS ---
 function getDaysForPeriod(startDate: Date, daysCount: number) {
   const days = [];
   for (let i = 0; i < daysCount; i++) {
@@ -24,17 +15,10 @@ function getDaysForPeriod(startDate: Date, daysCount: number) {
 }
 
 function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boolean): string {
-  // TAM DOLU: Artık daha koyu bir kırmızı/bordo tonu (Rose-900 zemin, Beyaz yazı)
-  if (bookedCount >= capacity) return 'bg-rose-700 text-white border-rose-800 shadow-inner ring-1 ring-rose-900/20'; 
-  
-  // KISMİ DOLU: Indigo (Mor-Mavi) tonu
-  if (bookedCount > 0) return 'bg-indigo-100 text-indigo-900 border-indigo-200 shadow-sm'; 
-  
-  // HAFTA SONU: Belirgin gri
-  if (isWeekend) return 'bg-slate-50 border-slate-50 text-slate-500'; 
-  
-  // BOŞ: Saf beyaz
-  return 'bg-white border-slate-200 text-slate-400'; 
+  if (bookedCount >= capacity) return 'bg-brand-primary text-white border-brand-primary shadow-lg ring-1 ring-brand-primary/20'; 
+  if (bookedCount > 0) return 'bg-brand-primary/10 text-brand-primary border-brand-primary/20 font-bold'; 
+  if (isWeekend) return 'bg-brand-surface/50 border-brand-surface text-brand-muted'; 
+  return 'bg-white border-brand-surface text-slate-200'; 
 }
 
 const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
@@ -49,7 +33,7 @@ const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: 
         setLocalValue(e.target.value);
         onChange(e.target.value);
       }}
-      className="w-full bg-slate-100 border-0 rounded-2xl px-6 py-4 font-black text-lg outline-none uppercase focus:ring-2 ring-indigo-500 transition-all placeholder:text-slate-400"
+      className="w-full bg-brand-surface border-0 rounded-ini px-6 py-4 font-black text-brand-base outline-none uppercase focus:ring-2 ring-brand-primary transition-all placeholder:text-brand-muted"
       placeholder={placeholder}
     />
   );
@@ -69,7 +53,7 @@ export function Calendar() {
   const [isNewBookingModalOpen, setIsNewBookingModalOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [newBookingData, setNewBookingData] = useState({ roomId: 0, startDate: '', endDate: '', title: '' });
-  const [editForm, setEditForm] = useState({ title: '', start_date: '', end_date: '' });
+  const [editForm, setEditForm] = useState<any>({ title: '', start_date: '', end_date: '', duration: 1 });
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
 
@@ -88,25 +72,21 @@ export function Calendar() {
 
   useEffect(() => { fetchData(); }, []);
 
-useEffect(() => {
-  if (editingBooking) {
-    // Saatleri temizleyerek sadece gün bazlı obje oluşturuyoruz
-    const start = new Date(editingBooking.start_time.split(/[\sT]/)[0]);
-    const end = new Date(editingBooking.end_time.split(/[\sT]/)[0]);
-    
-    // Milisaniye farkını alıp güne çeviriyoruz
-    const diffTime = end.getTime() - start.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  useEffect(() => {
+    if (editingBooking) {
+      const start = new Date(editingBooking.start_time.split(/[\sT]/)[0]);
+      const end = new Date(editingBooking.end_time.split(/[\sT]/)[0]);
+      const diffTime = end.getTime() - start.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-    setEditForm({
-      title: editingBooking.title,
-      start_date: editingBooking.start_time.split(/[\sT]/)[0],
-      end_date: editingBooking.end_time.split(/[\sT]/)[0],
-      duration: diffDays // Artık net gece sayısını tutuyor
-    });
-  }
-}, [editingBooking]);
-
+      setEditForm({
+        title: editingBooking.title,
+        start_date: editingBooking.start_time.split(/[\sT]/)[0],
+        end_date: editingBooking.end_time.split(/[\sT]/)[0],
+        duration: diffDays
+      });
+    }
+  }, [editingBooking]);
 
   const getIsShadow = (roomId: number, dateStr: string) => {
     if (!draggedBooking || !dragOverCell) return false;
@@ -188,9 +168,7 @@ useEffect(() => {
     const durationMs = end.getTime() - start.getTime();
     const newStart = new Date(`${targetDate}T${start.toTimeString().split(' ')[0]}`);
     const newEnd = new Date(newStart.getTime() + durationMs);
-
     const format = (d: Date) => d.toISOString().split('.')[0];
-
     try {
       await updateBooking(draggedBooking.id, {
         room_id: targetRoomId,
@@ -203,24 +181,16 @@ useEffect(() => {
     finally { setDraggedBooking(null); setDragOverCell(null); }
   };
 
-const handleStartDateChange = (newStartStr: string) => {
-  if (!newStartStr) return;
-  
-  // Hem editForm hem de newBookingData için süreyi belirle
-  const currentDuration = editingBooking ? (editForm.duration || 1) : 1;
-  
-  const newStartDate = new Date(newStartStr);
-  const newEndDate = new Date(newStartDate);
-  newEndDate.setDate(newStartDate.getDate() + currentDuration);
-  
-  const formattedEnd = newEndDate.toISOString().split('T')[0];
-  
-  if (editingBooking) {
-    setEditForm({ ...editForm, start_date: newStartStr, end_date: formattedEnd });
-  } else {
-    setNewBookingData({ ...newBookingData, startDate: newStartStr, endDate: formattedEnd });
-  }
-};
+  const handleStartDateChange = (newStartStr: string) => {
+    if (!newStartStr) return;
+    const currentDuration = editingBooking ? (editForm.duration || 1) : 1;
+    const newStartDate = new Date(newStartStr);
+    const newEndDate = new Date(newStartDate);
+    newEndDate.setDate(newStartDate.getDate() + currentDuration);
+    const formattedEnd = newEndDate.toISOString().split('T')[0];
+    if (editingBooking) setEditForm({ ...editForm, start_date: newStartStr, end_date: formattedEnd });
+    else setNewBookingData({ ...newBookingData, startDate: newStartStr, endDate: formattedEnd });
+  };
 
   function getBookingsForRoomAndDay(roomId: number, day: Date) {
     const ts = new Date(day).setHours(0, 0, 0, 0);
@@ -232,66 +202,76 @@ const handleStartDateChange = (newStartStr: string) => {
     });
   }
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-slate-900 animate-pulse text-2xl uppercase">InI Loading...</div>;
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center font-black text-brand-secondary animate-pulse text-2xl uppercase tracking-widest font-brand">
+      InI Preparing...
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-[#F1F3F6] p-4 md:p-8 font-sans">
+    <div className={`min-h-screen bg-brand-surface px-4 pt-2 pb-8 font-brand transition-all duration-500 ${viewWindow === 15 ? 'view-15' : ''}`}>
       
-      {/* HEADER */}
-      <div className="max-w-[100vw] mx-auto mb-8 flex flex-col md:flex-row justify-between items-end gap-6 border-b-2 border-slate-200 pb-8">
+      {/* HEADER SECTION */}
+      <div className="max-w-[100vw] mx-auto mb-1 flex flex-col md:flex-row justify-between items-end gap-2 border-b-2 border-brand-surface pb-1">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">
-            InI Booking <span className="text-[12px] bg-slate-900 text-white px-3 py-1 rounded ml-2 align-middle">PRO v2</span>
+          <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter leading-none italic">
+            Daily <span className="text-brand-primary">Ops</span>
           </h1>
-          <p className="text-slate-500 text-[11px] font-black uppercase tracking-[0.3em] mt-3">
+          <p className="text-brand-muted text-[9px] font-black uppercase tracking-[0.2em] mt-0.5">
             {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })} — {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
           </p>
         </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex bg-slate-200 p-1 rounded-xl border border-slate-300">
+        
+        <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex bg-brand-surface p-0.5 rounded-lg border border-brand-surface">
             {[7, 15].map((v) => (
-              <button key={v} onClick={() => setViewWindow(v as any)} className={`px-6 py-2 rounded-lg text-[11px] font-black transition-all ${viewWindow === v ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>{v} GÜN</button>
+              <button 
+                key={v} 
+                onClick={() => setViewWindow(v as any)} 
+                className={`px-3 py-1.5 rounded-md text-[9px] font-black transition-all ${viewWindow === v ? 'bg-white text-brand-secondary shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
+              >
+                {v} GÜN
+              </button>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={movePrev} className="w-12 h-12 flex items-center justify-center bg-white border-2 border-slate-200 rounded-2xl hover:border-indigo-500 transition-all text-slate-900 font-bold">←</button>
-            <button onClick={() => setStartDate(new Date(new Date().setHours(0,0,0,0)))} className="px-8 py-3 text-[11px] font-black uppercase tracking-widest text-white bg-slate-900 rounded-2xl hover:bg-indigo-600 transition-all shadow-lg">Bugün</button>
-            <button onClick={moveNext} className="w-12 h-12 flex items-center justify-center bg-white border-2 border-slate-200 rounded-2xl hover:border-indigo-500 transition-all text-slate-900 font-bold">→</button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={movePrev} className="w-9 h-9 flex items-center justify-center bg-white border border-brand-surface rounded-md hover:border-brand-primary transition-all text-brand-secondary font-bold shadow-sm text-xs">←</button>
+            <button onClick={() => setStartDate(new Date(new Date().setHours(0,0,0,0)))} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-white bg-brand-secondary rounded-md hover:bg-brand-primary transition-all shadow-md">Bugün</button>
+            <button onClick={moveNext} className="w-9 h-9 flex items-center justify-center bg-white border border-brand-surface rounded-md hover:border-brand-primary transition-all text-brand-secondary font-bold shadow-sm text-xs">→</button>
           </div>
         </div>
       </div>
 
-      {/* TABLO */}
-      <div className="bg-white rounded-[2.5rem] border-2 border-slate-200 shadow-2xl overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* CALENDAR TABLE */}
+      <div className="ini-card overflow-hidden">
+        <div className="overflow-x-auto no-scrollbar">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-slate-50">
-                <th className="sticky left-0 z-40 bg-slate-100 p-6 min-w-[200px] border-r-2 border-slate-200 text-center font-black uppercase text-slate-900 text-[12px] tracking-widest shadow-md">Kaynaklar</th>
+              <tr className="bg-brand-surface/30">
+                <th className="sticky left-0 z-40 bg-brand-surface p-4 sticky-resource border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md transition-all">Resources</th>
                 {days.map(day => {
                   const isToday = day.getTime() === today.getTime();
                   return (
-                    <th key={day.toISOString()} className={`p-4 border-r border-slate-200 min-w-[70px] text-center ${isToday ? 'bg-indigo-600 text-white' : ''}`}>
-                      <div className={`text-[10px] font-black uppercase ${isToday ? 'text-indigo-100' : 'text-slate-400'}`}>{day.toLocaleDateString('tr-TR', { weekday: 'short' })}</div>
-                      <div className="text-xl font-black">{day.getDate()}</div>
+                    <th key={day.toISOString()} className={`p-2 border-r border-brand-surface min-w-[90px] text-center transition-all ${isToday ? 'bg-brand-primary text-white' : ''}`}>
+                      <div className={`text-[9px] font-black uppercase ${isToday ? 'text-white/40' : 'text-brand-muted'}`}>{day.toLocaleDateString('tr-TR', { weekday: 'short' })}</div>
+                      <div className="text-lg font-black">{day.getDate()}</div>
                     </th>
                   );
                 })}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="ini-divide">
               {['F', 'M', 'S'].map(floor => (
                 <Fragment key={floor}>
-                  <tr className="bg-slate-800 text-[11px] font-black uppercase tracking-[0.5em] text-white">
-                    <td className="sticky left-0 z-30 bg-slate-800 px-6 py-3 border-y border-slate-700 text-center shadow-md">Floor {floor}</td>
-                    <td colSpan={days.length} className="border-y border-slate-700 opacity-20 italic pl-4"></td>
+                  <tr className="bg-brand-secondary text-[9px] font-black uppercase tracking-[0.4em] text-white">
+                    <td className="sticky left-0 z-30 bg-brand-secondary px-4 py-2 sticky-resource border-y border-white/5 text-center shadow-md transition-all">Floor {floor}</td>
+                    <td colSpan={days.length} className="border-y border-white/5 opacity-20 italic pl-4"></td>
                   </tr>
                   {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
-                    <tr key={room.id} className="group/row border-b border-slate-100">
-                      <td className="sticky left-0 z-30 bg-white p-6 border-r-2 border-slate-200 group-hover/row:bg-slate-50 transition-all text-center">
-                        <div className="font-black text-slate-900 text-[15px] uppercase tracking-tighter">{room.name}</div>
-                        <div className="text-[10px] font-black text-indigo-600 mt-1 uppercase bg-indigo-50 rounded-full px-2 py-0.5 inline-block">Kapasite: {room.capacity}</div>
+                    <tr key={room.id} className="group/row border-b border-brand-surface">
+                      <td className="sticky left-0 z-30 bg-white p-4 sticky-resource border-r border-brand-primary/5 group-hover/row:bg-brand-surface/40 transition-all text-center shadow-sm">
+                        <div className="font-black text-brand-secondary text-sm uppercase tracking-tighter">{room.name}</div>
+                        <div className="text-[7px] font-black text-brand-primary mt-1 uppercase bg-brand-primary/10 rounded-full px-2 py-0.5 inline-block">Cap: {room.capacity}</div>
                       </td>
                       {days.map(day => {
                         const dateStr = day.toISOString().split('T')[0];
@@ -299,41 +279,37 @@ const handleStartDateChange = (newStartStr: string) => {
                         const isShadow = getIsShadow(room.id, dateStr);
                         return (
                           <td 
-  key={day.toISOString()} 
-  onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
-  onDrop={(e) => handleDrop(e, room.id, dateStr)}
-  className={`p-1.5 border-r border-slate-100 h-36 min-w-[120px] relative transition-all group/cell
-    ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
-    ${isShadow ? 'bg-indigo-700 ring-4 ring-indigo-900 ring-inset scale-95 z-10' : ''}
-  `}
->
-  {/* Kaydırma çubuğu gizlenmiş konteyner */}
-  <div 
-    className="flex flex-col gap-1 h-full overflow-y-auto" 
-    style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}
-  >
-    {/* Webkit için gizleme sınıfını (no-scrollbar) Tailwind config'e eklemediysen inline style en garantisi */}
-    <style>{`.no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-    
-    <div className="no-scrollbar flex flex-col gap-1 h-full overflow-y-auto">
-      {dayBookings.map(b => (
-        <div
-          key={b.id}
-          draggable
-          onDragStart={(e) => handleDragStart(e, b)}
-          onClick={() => { setEditingBooking(b); setEditForm({ title: b.title, start_date: b.start_time.split('T')[0], end_date: b.end_time.split('T')[0] }); }}
-          className="w-full p-2.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase cursor-grab active:cursor-grabbing hover:bg-indigo-600 transition-all shadow-md border border-white/10 shrink-0"
-        >
-          {b.title}
-        </div>
-      ))}
-    </div>
-  </div>
+                            key={day.toISOString()} 
+                            onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
+                            onDrop={(e) => handleDrop(e, room.id, dateStr)}
+                            className={`p-1.5 border-r border-brand-surface min-w-[40px] h-full relative transition-all group/cell
+                              ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
+                              ${isShadow ? 'bg-brand-primary ring-4 ring-brand-primary ring-inset scale-95 z-10 shadow-2xl' : ''}
+                            `}
+                          >
+                            <div className="flex flex-col gap-1 relative z-10">
+                              {dayBookings.map(b => (
+                                <div
+                                  key={b.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, b)}
+                                  onClick={() => setEditingBooking(b)}
+                                  className="booking-card w-full p-1.5 bg-brand-secondary text-white rounded-md text-[8px] font-black uppercase cursor-grab active:cursor-grabbing hover:bg-brand-primary transition-all border border-white/10"
+                                >
+                                  {b.title}
+                                </div>
+                              ))}
+                            </div>
 
-  {!dayBookings.length && (
-    <button onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} className="absolute inset-0 opacity-0 group-hover/cell:opacity-100 text-indigo-600 text-4xl font-light transition-all cursor-crosshair">+</button>
-  )}
-</td>
+                            {dayBookings.length < room.capacity && (
+                              <button 
+                                onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} 
+                                className="absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center bg-brand-primary text-white rounded-full opacity-0 group-hover/cell:opacity-100 transition-all z-30 shadow-lg hover:scale-110 active:scale-90 font-bold text-sm"
+                              >
+                                +
+                              </button>
+                            )}
+                          </td>
                         );
                       })}
                     </tr>
@@ -345,45 +321,44 @@ const handleStartDateChange = (newStartStr: string) => {
         </div>
       </div>
 
-      {/* MODAL */}
+      {/* MODAL SECTION */}
       {(isNewBookingModalOpen || editingBooking) && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[110] p-4">
-          <div className="bg-white rounded-[3rem] p-12 w-full max-w-lg shadow-2xl border-4 border-slate-900">
-            <h2 className="text-4xl font-black text-slate-900 mb-8 tracking-tighter uppercase italic underline decoration-indigo-500">{editingBooking ? 'Güncelle' : 'Yeni Kayıt'}</h2>
-            <div className="space-y-6">
-              <FastInput value={editingBooking ? editForm.title : newBookingData.title} onChange={(val) => editingBooking ? setEditForm({...editForm, title: val}) : setNewBookingData({...newBookingData, title: val})} placeholder="KAYIT BAŞLIĞI..." />
+        <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
+          <div className="bg-white rounded-ini p-8 w-full max-w-lg shadow-2xl border-4 border-brand-secondary animate-in zoom-in duration-200">
+            <h2 className="text-3xl font-black text-brand-secondary mb-6 tracking-tighter uppercase italic underline decoration-brand-primary decoration-4 underline-offset-8">
+              {editingBooking ? 'Update' : 'New Entry'}
+            </h2>
+            <div className="space-y-4">
+              <FastInput value={editingBooking ? editForm.title : newBookingData.title} onChange={(val) => editingBooking ? setEditForm({...editForm, title: val}) : setNewBookingData({...newBookingData, title: val})} placeholder="GUEST NAME / TITLE..." />
               <div className="grid grid-cols-2 gap-4">
-      <div className="space-y-2">
-  <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Giriş</label>
-  <input 
-    type="date" 
-    value={editForm.start_date}
-    onChange={(e) => handleStartDateChange(e.target.value)} // Yeni fonksiyon
-    className="bg-slate-100 p-5 rounded-2xl font-black w-full" 
-  />
-</div>
-
-<div className="space-y-2">
-  <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Çıkış</label>
-  <input 
-    type="date" 
-    value={editForm.end_date}
-    onChange={(e) => {
-      // Eğer kullanıcı manuel olarak çıkış tarihini değiştirirse, süreyi (duration) yeniden hesapla
-      const newEnd = new Date(e.target.value);
-      const start = new Date(editForm.start_date);
-      const diff = Math.ceil((newEnd.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      setEditForm({...editForm, end_date: e.target.value, duration: diff});
-    }}
-    className="bg-slate-100 p-5 rounded-2xl font-black w-full" 
-  />
-</div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase ml-1 text-brand-muted tracking-widest">Arrival</label>
+                  <input type="date" value={editingBooking ? editForm.start_date : newBookingData.startDate} onChange={(e) => handleStartDateChange(e.target.value)} className="bg-brand-surface p-4 rounded-md font-black w-full border-0 focus:ring-2 ring-brand-primary outline-none text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase ml-1 text-brand-muted tracking-widest">Departure</label>
+                  <input 
+                    type="date" 
+                    value={editingBooking ? editForm.end_date : newBookingData.endDate} 
+                    onChange={(e) => {
+                      const newEnd = e.target.value;
+                      if (editingBooking) {
+                        const start = new Date(editForm.start_date);
+                        const diff = Math.ceil((new Date(newEnd).getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        setEditForm({...editForm, end_date: newEnd, duration: diff});
+                      } else {
+                        setNewBookingData({...newBookingData, endDate: newEnd});
+                      }
+                    }} 
+                    className="bg-brand-surface p-4 rounded-md font-black w-full border-0 focus:ring-2 ring-brand-primary outline-none text-xs" 
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex gap-4 mt-10">
-              <button onClick={editingBooking ? handleUpdate : handleCreate} className="flex-1 bg-indigo-600 text-white py-6 rounded-2xl font-black uppercase hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200">Onayla</button>
-              {editingBooking && <button onClick={() => handleDelete(editingBooking.id)} className="px-10 bg-rose-600 text-white rounded-2xl font-black uppercase hover:bg-rose-700 transition-all">Sil</button>}
-              <button onClick={() => { setIsNewBookingModalOpen(false); setEditingBooking(null); }} className="px-8 bg-slate-200 text-slate-600 rounded-2xl font-black uppercase hover:bg-slate-300 transition-all">Kapat</button>
+            <div className="flex gap-3 mt-8">
+              <button onClick={editingBooking ? handleUpdate : handleCreate} className="flex-1 bg-brand-primary text-white py-4 rounded-md font-black uppercase hover:bg-brand-primary/90 transition-all shadow-lg text-xs">Confirm</button>
+              {editingBooking && <button onClick={() => handleDelete(editingBooking.id)} className="px-6 bg-brand-danger text-white rounded-md font-black uppercase hover:bg-brand-danger/90 transition-all text-xs">Delete</button>}
+              <button onClick={() => { setIsNewBookingModalOpen(false); setEditingBooking(null); }} className="px-6 bg-brand-surface text-brand-muted rounded-md font-black uppercase hover:bg-brand-surface/80 transition-all text-xs">Cancel</button>
             </div>
           </div>
         </div>
