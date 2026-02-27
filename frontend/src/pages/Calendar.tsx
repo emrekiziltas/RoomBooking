@@ -44,6 +44,9 @@ export function Calendar() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewWindow, setViewWindow] = useState<7 | 15>(15);
+  // Kapalı katları tutan state (Collapse özelliği için)
+  const [collapsedFloors, setCollapsedFloors] = useState<string[]>([]);
+  
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -87,6 +90,13 @@ export function Calendar() {
       });
     }
   }, [editingBooking]);
+
+  // Kat açma/kapama fonksiyonu
+  const toggleFloor = (floor: string) => {
+    setCollapsedFloors(prev => 
+      prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor]
+    );
+  };
 
   const getIsShadow = (roomId: number, dateStr: string) => {
     if (!draggedBooking || !dragOverCell) return false;
@@ -263,12 +273,24 @@ export function Calendar() {
             <tbody className="ini-divide">
               {['F', 'M', 'S'].map(floor => (
                 <Fragment key={floor}>
-                  <tr className="bg-brand-secondary text-[9px] font-black uppercase tracking-[0.4em] text-white">
-                    <td className="sticky left-0 z-30 bg-brand-secondary px-4 py-2 sticky-resource border-y border-white/5 text-center shadow-md transition-all">Floor {floor}</td>
-                    <td colSpan={days.length} className="border-y border-white/5 opacity-20 italic pl-4"></td>
+                  {/* Floor Satırı (Tıklanabilir Harmonic Yapı) */}
+                  <tr 
+                    onClick={() => toggleFloor(floor)}
+                    className="cursor-pointer bg-gradient-to-r from-brand-secondary to-brand-secondary/90 text-[9px] font-black uppercase tracking-[0.4em] text-white hover:brightness-110 transition-all select-none"
+                  >
+                    <td className="sticky left-0 z-30 bg-brand-secondary px-4 py-2 sticky-resource border-y border-white/5 text-center shadow-md">
+                      <span className="flex items-center justify-center gap-2">
+                        {collapsedFloors.includes(floor) ? '▶' : '▼'} Floor {floor}
+                      </span>
+                    </td>
+                    <td colSpan={days.length} className="border-y border-white/5 opacity-30 italic pl-4 text-[8px] tracking-widest">
+                      {collapsedFloors.includes(floor) ? 'Click to Expand' : 'InI Operational Sector'}
+                    </td>
                   </tr>
-                  {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
-                    <tr key={room.id} className="group/row border-b border-brand-surface">
+
+                  {/* Odalar (Eğer kat kapalı değilse göster) */}
+                  {!collapsedFloors.includes(floor) && rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
+                    <tr key={room.id} className="group/row border-b border-brand-surface animate-in fade-in slide-in-from-top-1 duration-200">
                       <td className="sticky left-0 z-30 bg-white p-4 sticky-resource border-r border-brand-primary/5 group-hover/row:bg-brand-surface/40 transition-all text-center shadow-sm">
                         <div className="font-black text-brand-secondary text-sm uppercase tracking-tighter">{room.name}</div>
                         <div className="text-[7px] font-black text-brand-primary mt-1 uppercase bg-brand-primary/10 rounded-full px-2 py-0.5 inline-block">Cap: {room.capacity}</div>
