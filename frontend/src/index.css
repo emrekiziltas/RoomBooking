@@ -14,13 +14,19 @@
   --text-brand-title: 3.5rem;
   --text-brand-small: 0.75rem;
   
-  --radius-ini: 2.5rem;
+  /* DEĞİŞİKLİK: 2.5rem olan değeri 2px veya 0 yaparak yuvarlaklığı öldürdük */
+  --radius-ini: 0.5rem; 
 }
 
 @layer base {
   body {
     @apply font-brand bg-brand-surface text-brand-secondary antialiased;
     font-size: var(--text-brand-base);
+  }
+
+  /* Butonlar ve Inputlar için global sertleştirme */
+  button, input, .ini-card {
+    border-radius: var(--radius-ini) !important;
   }
 
   @media print {
@@ -31,8 +37,9 @@
 }
 
 @layer utilities {
+  /* Tek ve Temiz Kart Tanımı */
   .ini-card {
-    @apply bg-white rounded-ini border-2 border-brand-surface shadow-sm transition-all duration-300;
+    @apply bg-white border-2 border-brand-surface shadow-sm transition-all duration-300;
   }
   
   .ini-divide {
@@ -47,23 +54,14 @@
     display: none;
   }
 
-  /* --- InI Compact Mode (15 Günlük Görünüm) --- */
+  /* 15 Günlük Görünüm Ayarları */
   .view-15 {
-    --text-brand-title: 2.2rem; /* Başlığı küçültür */
+    --text-brand-title: 2.2rem;
   }
 
   .view-15 th, 
   .view-15 td {
     min-width: 90px !important; 
     padding: 0.5rem !important;
-  }
-
-  .view-15 .sticky-resource {
-    min-width: 130px !important;
-  }
-
-  .view-15 .booking-card {
-    padding: 0.4rem !important;
-    font-size: 8px !important;
   }
 }
