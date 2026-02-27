@@ -61,7 +61,7 @@ export function Navbar() {
 
       <div className="flex items-center gap-6">
         <div className="text-right hidden md:block">
-          <p className="text-[10px] font-black text-slate-400 uppercase leading-none">Hoş geldin</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase leading-none">Welcome</p>
           <p className="text-sm font-black text-slate-900 uppercase">{user?.name}</p>
         </div>
         
