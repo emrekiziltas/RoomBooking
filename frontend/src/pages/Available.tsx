@@ -3,11 +3,11 @@ import type { Room } from '../types/index';
 import { getAvailableRooms } from '../api/rooms';
 import { createBooking } from '../api/bookings';
 
-
+// Brand uyumlu kat tanımları
 const FLOORS: Record<string, { label: string; color: string; border: string; bg: string; bookingColor: string }> = {
-  F: { label: 'First Floor',    color: 'text-blue-700',   border: 'border-blue-500',  bg: 'bg-blue-50',  bookingColor: '#3B82F6' },
-  M: { label: 'Mezzanine Floor', color: 'text-green-700',  border: 'border-green-500', bg: 'bg-green-50', bookingColor: '#10B981' },
-  S: { label: 'Second Floor',    color: 'text-orange-700', border: 'border-orange-500', bg: 'bg-orange-50', bookingColor: '#F59E0B' },
+  F: { label: 'FIRST FLOOR', color: 'text-brand-primary', border: 'border-brand-primary', bg: 'bg-brand-surface', bookingColor: 'var(--brand-primary)' },
+  M: { label: 'MEZZANINE', color: 'text-brand-success', border: 'border-brand-success', bg: 'bg-brand-surface', bookingColor: 'var(--brand-success)' },
+  S: { label: 'SECOND FLOOR', color: 'text-brand-danger', border: 'border-brand-danger', bg: 'bg-brand-surface', bookingColor: 'var(--brand-danger)' },
 };
 
 export function Available() {
@@ -41,9 +41,8 @@ export function Available() {
   }, [selectedDate]);
 
   const openBookingModal = (room: Room) => {
-    // Odanın floor'una göre renk al
     const prefix = room.name?.[0]?.toUpperCase() || 'F';
-    const floorColor = FLOORS[prefix]?.bookingColor || '#3B82F6';
+    const floorColor = FLOORS[prefix]?.bookingColor || 'var(--brand-primary)';
     
     setBookingModal({ room, color: floorColor });
     setBookingForm({
@@ -54,10 +53,7 @@ export function Available() {
   };
 
   const handleCreateBooking = async () => {
-    if (!bookingModal || !bookingForm.title.trim()) {
-      alert('Please enter a title');
-      return;
-    }
+    if (!bookingModal || !bookingForm.title.trim()) return;
 
     setSaving(true);
     try {
@@ -66,14 +62,12 @@ export function Available() {
         title: bookingForm.title,
         start_time: bookingForm.start_time,
         end_time: bookingForm.end_time,
-        color: bookingModal.color // Odanın rengini kullan
+        color: bookingModal.color
       });
 
-      alert('Booking created successfully!');
       setBookingModal(null);
       fetchRooms(selectedDate);
     } catch (error: any) {
-      console.error('Error creating booking:', error);
       alert(error.response?.data?.message || 'Failed to create booking');
     } finally {
       setSaving(false);
@@ -92,56 +86,56 @@ export function Available() {
     return groups;
   }, [rooms]);
 
-  const floorKeys = ['F', 'M', 'S'];
-
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      {/* HEADER & SEARCH */}
-      <div className="max-w-6xl mx-auto mb-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+    <div className="min-h-screen bg-brand-surface px-4 pt-2 pb-12 font-brand">
+      
+      {/* HEADER & SEARCH - Daily Ops Style */}
+      <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-end gap-4 border-b-2 border-brand-surface pb-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Room Availability</h1>
-          <p className="text-gray-500 text-sm">Find and book your space</p>
+          <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic leading-none">
+            Room <span className="text-brand-primary">Availability</span>
+          </h1>
+          <p className="text-brand-muted font-black uppercase text-[9px] tracking-[0.3em] mt-0.5">Real-time resource tracking</p>
         </div>
         
         <div className="flex gap-2 w-full md:w-auto">
           <input 
             type="date" 
-            className="flex-1 md:w-48 p-2 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            className="flex-1 md:w-48 p-2 bg-white border-2 border-brand-surface rounded-ini text-[11px] font-black uppercase outline-none focus:border-brand-primary transition-all"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
           />
           <button 
             onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium"
+            className="px-4 py-2 bg-brand-secondary text-white rounded-ini hover:bg-brand-primary transition-colors text-[10px] font-black uppercase tracking-widest"
           >
             Today
           </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
-            <p>Checking availability...</p>
+          <div className="py-20 text-center font-black text-brand-muted text-[10px] tracking-[0.4em] animate-pulse uppercase">
+            Scanning Infrastructure...
           </div>
         ) : rooms.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed">
-            <p className="text-gray-500">No rooms available for this date.</p>
+          <div className="text-center py-20 bg-white rounded-ini border-2 border-dashed border-brand-surface">
+            <p className="text-brand-muted font-black text-[10px] uppercase tracking-widest">No resources available for this sequence.</p>
           </div>
         ) : (
-          floorKeys.map((prefix) => {
+          ['F', 'M', 'S'].map((prefix) => {
             const floorRooms = groupedRooms[prefix] || [];
             if (floorRooms.length === 0) return null;
             const floor = FLOORS[prefix];
 
             return (
               <div key={prefix} className="mb-10">
-                <div className="flex items-center gap-3 mb-6">
-                  <h2 className={`text-lg font-bold ${floor.color} whitespace-nowrap`}>
+                <div className="flex items-center gap-3 mb-4">
+                  <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>
                     {floor.label}
                   </h2>
-                  <div className={`flex-1 h-0.5 ${floor.bg} rounded-full`} />
+                  <div className="flex-1 h-px bg-gray-200" />
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -149,28 +143,32 @@ export function Available() {
                     <div
                       key={room.id}
                       onClick={() => openBookingModal(room)}
-                      className={`${floor.bg} border-l-4 ${floor.border} rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group`}
+                      className="ini-card p-4 hover:border-brand-primary transition-all cursor-pointer group relative overflow-hidden"
                     >
-                      <h3 className={`font-bold text-lg ${floor.color} group-hover:scale-105 transition-transform`}>
+                      <h3 className={`font-black text-lg ${floor.color} uppercase tracking-tighter leading-none mb-2 group-hover:translate-x-1 transition-transform`}>
                         {room.name}
                       </h3>
                       
-                      <div className="flex items-center gap-2 text-sm mb-2">
-                        <span className="text-gray-600">
-                          {room.available_capacity} Desk is available
-                        </span>
-                        {room.booked_slots > 0 && (
-                          <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">
-                            {room.booked_slots} dolu ({room.occupancy_rate}%)
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                           <span className="text-[10px] font-black text-brand-secondary uppercase">
+                            {room.available_capacity} Desks Free
                           </span>
+                        </div>
+                        
+                        {room.booked_slots > 0 && (
+                          <div className="inline-block bg-brand-surface px-2 py-0.5 rounded-ini border border-brand-surface">
+                            <span className="text-[8px] font-black text-brand-danger uppercase">
+                              {room.occupancy_rate}% Occupied
+                            </span>
+                          </div>
                         )}
                       </div>
 
-                      {room.features?.blackboard && (
-                        <span className="text-[10px] font-bold bg-white/80 border border-gray-100 px-2 py-0.5 rounded-full text-gray-500 uppercase tracking-wider">
-                          📋 Blackboard
-                        </span>
-                      )}
+                      <div className="mt-4 pt-3 border-t border-brand-surface flex justify-between items-center">
+                         <span className="text-[8px] font-black text-brand-muted uppercase tracking-widest">Quick Book</span>
+                         <span className="text-xs group-hover:translate-x-1 transition-transform">→</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -180,92 +178,69 @@ export function Available() {
         )}
       </div>
 
-      {/* Booking Modal */}
+      {/* Booking Modal - Daily Ops Style */}
       {bookingModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setBookingModal(null)} />
+          <div className="ini-card max-w-md w-full p-8 relative z-10 animate-in zoom-in-95 duration-300">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-3">
-                {/* Renk göstergesi */}
-                <div 
-                  className="w-4 h-4 rounded-full" 
-                  style={{ backgroundColor: bookingModal.color }}
-                />
+                <div className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: bookingModal.color }} />
                 <div>
-                  <h3 className="text-xl font-bold text-gray-800">
+                  <h3 className="text-xl font-black text-brand-secondary uppercase tracking-tighter italic">
                     Book {bookingModal.room.name}
                   </h3>
-                  <p className="text-sm text-gray-500">
-                    {new Date(selectedDate).toLocaleDateString('en-GB')}
+                  <p className="text-[9px] font-black text-brand-muted uppercase tracking-[0.2em]">
+                    Term: {new Date(selectedDate).toLocaleDateString('en-GB')}
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setBookingModal(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
+              <button onClick={() => setBookingModal(null)} className="text-brand-muted hover:text-brand-danger transition-colors">
+                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Title */}
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Title *
-                </label>
+                <label className="text-[9px] font-black text-brand-primary uppercase mb-2 block tracking-widest">Mission Title</label>
                 <input
                   type="text"
                   value={bookingForm.title}
                   onChange={(e) => setBookingForm({ ...bookingForm, title: e.target.value })}
-                  placeholder="Meeting, Workshop, etc."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="E.G. SPRINT PLANNING"
+                  className="w-full px-4 py-3 bg-brand-surface border-0 rounded-ini text-[11px] font-black outline-none focus:ring-1 ring-brand-primary uppercase"
                 />
               </div>
 
-              {/* Start Time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Start Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={bookingForm.start_time}
-                  onChange={(e) => setBookingForm({ ...bookingForm, start_time: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
-              </div>
-
-              {/* End Time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  End Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={bookingForm.end_time}
-                  onChange={(e) => setBookingForm({ ...bookingForm, end_time: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[9px] font-black text-brand-primary uppercase mb-2 block tracking-widest">Start</label>
+                  <input
+                    type="datetime-local"
+                    value={bookingForm.start_time}
+                    onChange={(e) => setBookingForm({ ...bookingForm, start_time: e.target.value })}
+                    className="w-full px-3 py-2 bg-brand-surface border-0 rounded-ini text-[10px] font-black outline-none focus:ring-1 ring-brand-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-brand-primary uppercase mb-2 block tracking-widest">End</label>
+                  <input
+                    type="datetime-local"
+                    value={bookingForm.end_time}
+                    onChange={(e) => setBookingForm({ ...bookingForm, end_time: e.target.value })}
+                    className="w-full px-3 py-2 bg-brand-surface border-0 rounded-ini text-[10px] font-black outline-none focus:ring-1 ring-brand-primary"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setBookingModal(null)}
-                className="flex-1 py-2 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateBooking}
-                disabled={saving || !bookingForm.title.trim()}
-                className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {saving ? 'Booking...' : 'Book Room'}
-              </button>
-            </div>
+            <button
+              onClick={handleCreateBooking}
+              disabled={saving || !bookingForm.title.trim()}
+              className="w-full mt-8 py-4 bg-brand-secondary text-white rounded-ini font-black uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-brand-primary transition-all disabled:opacity-50"
+            >
+              {saving ? 'EXECUTING...' : 'CONFIRM RESERVATION'}
+            </button>
           </div>
         </div>
       )}
