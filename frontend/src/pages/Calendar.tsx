@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment, useMemo, useRef } from 'react'; // useRef eklendi
+import { useEffect, useState, Fragment, useMemo, useRef } from 'react';
 import { getRooms } from '../api/rooms';
 import { getBookings, createBooking, updateBooking, deleteBooking } from '../api/bookings';
 import type { Room, Booking } from '../types/index';
@@ -58,7 +58,6 @@ export function Calendar() {
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
   
-  // Zamanlayıcı referansı
   const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
@@ -98,15 +97,14 @@ export function Calendar() {
     );
   };
 
-  const handleDragEnterFloor = (floor: string) => {
-    // Önce varsa eski zamanlayıcıyı temizle
-    if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
-    
-    dragTimeoutRef.current = setTimeout(() => {
-      if (collapsedFloors.includes(floor)) {
+  const handleDragOverFloor = (e: React.DragEvent, floor: string) => {
+    e.preventDefault();
+    if (!dragTimeoutRef.current && collapsedFloors.includes(floor)) {
+      dragTimeoutRef.current = setTimeout(() => {
         setCollapsedFloors(prev => prev.filter(f => f !== floor));
-      }
-    }, 500); 
+        dragTimeoutRef.current = null;
+      }, 500);
+    }
   };
 
   const handleDragLeaveFloor = () => {
@@ -115,18 +113,6 @@ export function Calendar() {
       dragTimeoutRef.current = null;
     }
   };
-
-  const handleDragOverFloor = (e: React.DragEvent, floor: string) => {
-  e.preventDefault(); // Sürüklemeye izin ver
-  
-  // Eğer zaten bir zamanlayıcı yoksa ve kat kapalıysa başlat
-  if (!dragTimeoutRef.current && collapsedFloors.includes(floor)) {
-    dragTimeoutRef.current = setTimeout(() => {
-      setCollapsedFloors(prev => prev.filter(f => f !== floor));
-      dragTimeoutRef.current = null; // Açıldıktan sonra sıfırla
-    }, 500); // Bekleme süresini 0.5 saniyeye çektik (daha seri)
-  }
-};
 
   const getIsShadow = (roomId: number, dateStr: string) => {
     if (!draggedBooking || !dragOverCell) return false;
@@ -141,17 +127,8 @@ export function Calendar() {
     return currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
   };
 
-  const moveNext = () => {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + viewWindow);
-    setStartDate(d);
-  };
-
-  const movePrev = () => {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() - viewWindow);
-    setStartDate(d);
-  };
+  const moveNext = () => setStartDate(d => { const n = new Date(d); n.setDate(n.getDate() + viewWindow); return n; });
+  const movePrev = () => setStartDate(d => { const n = new Date(d); n.setDate(n.getDate() - viewWindow); return n; });
 
   const handleCreate = async () => {
     if (!newBookingData.title) return;
@@ -277,13 +254,12 @@ export function Calendar() {
       </div>
 
       {/* CALENDAR TABLE */}
-      <div className="ini-card overflow-hidden">
+<div className="ini-card overflow-visible">
         <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full border-collapse">
+           <table className="w-full border-collapse table-fixed">
             <thead>
                <tr className="bg-brand-surface/30">
-                <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md transition-all">Resources</th>
-                {days.map(day => {
+             <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md w-[120px]">Resources</th>      {days.map(day => {
                   const isToday = day.getTime() === today.getTime();
                   return (
                     <th key={day.toISOString()} className={`p-2 border-r border-brand-surface min-w-[90px] text-center transition-all ${isToday ? 'bg-brand-primary text-white' : ''}`}>
@@ -297,37 +273,31 @@ export function Calendar() {
             <tbody className="ini-divide">
               {['F', 'M', 'S'].map(floor => (
                 <Fragment key={floor}>
-        <tr 
-  onClick={() => toggleFloor(floor)}
-onDragOver={(e) => handleDragOverFloor(e, floor)} 
-  onDragLeave={handleDragLeaveFloor}
-  className={`cursor-pointer transition-all duration-300 select-none border-y border-white/10
-    ${dragOverCell ? 'py-4' : 'py-2'} 
-    ${collapsedFloors.includes(floor) 
-      ? 'bg-brand-secondary hover:bg-brand-primary/80' 
-      : 'bg-gradient-to-r from-brand-secondary to-brand-secondary/90'}
-  `}
->
-  <td className="sticky left-0 z-30 bg-brand-secondary px-4 py-3 sticky-resource text-center shadow-xl border-r border-white/10">
-    <span className="flex items-center justify-center gap-2 text-white font-black uppercase text-[10px] tracking-widest">
-      {collapsedFloors.includes(floor) ? '▶' : '▼'} FLOOR {floor}
-    </span>
-  </td>
-  <td colSpan={days.length} className="relative overflow-hidden group">
-    {/* Sürükleme sırasında arkada yanan hafif bir ışık efekti */}
-    <div className={`absolute inset-0 transition-opacity duration-300 bg-brand-primary/20 ${draggedBooking ? 'opacity-100' : 'opacity-0'}`} />
-    
-    <div className="absolute inset-0 flex items-center justify-center">
-      <span className="text-white font-black italic tracking-[0.5em] text-[9px] animate-pulse">
-        {collapsedFloors.includes(floor) 
-          ? "● ● ● HOLD TO REVEAL ● ● ●" 
-          : "SECTION ACTIVE"}
-      </span>
-    </div>
-  </td>
-</tr>
+                  <tr 
+                    onClick={() => toggleFloor(floor)}
+                    onDragOver={(e) => handleDragOverFloor(e, floor)} 
+                    onDragLeave={handleDragLeaveFloor}
+                    className={`cursor-pointer transition-all duration-300 select-none border-y border-white/10 h-10
+                      ${collapsedFloors.includes(floor) ? 'bg-brand-secondary hover:bg-brand-primary/80' : 'bg-brand-secondary/90'}
+                    `}
+                  >
+                    <td className="sticky left-0 z-30 bg-brand-secondary px-4 text-center shadow-xl border-r border-white/10">
+                        <div className="flex items-center justify-center gap-2 text-white font-black uppercase text-[10px] tracking-widest h-full">
+                           {collapsedFloors.includes(floor) ? '▶' : '▼'} FLOOR {floor}
+                        </div>
+                    </td>
+                    <td colSpan={days.length} className="relative overflow-hidden group">
+                        <div className="flex items-center justify-center w-full h-full min-h-[38px]">
+                            <div className={`absolute inset-0 transition-opacity duration-300 bg-brand-primary/20 ${draggedBooking ? 'opacity-100' : 'opacity-0'}`} />
+                            <span className="text-white font-black italic tracking-[0.5em] text-[8px] animate-pulse opacity-60 uppercase">
+                                {collapsedFloors.includes(floor) ? "● ● ● Click to Reveal ● ● ●" : "Section Active"}
+                            </span>
+                        </div>
+                    </td>
+                  </tr>
+
                   {!collapsedFloors.includes(floor) && rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
-                    <tr key={room.id} className="group/row border-b border-brand-surface animate-in fade-in slide-in-from-top-1 duration-200">
+                    <tr key={room.id} className="group/row border-b border-brand-surface">
                       <td className="sticky left-0 z-30 bg-white p-4 sticky-resource border-r border-brand-primary/5 group-hover/row:bg-brand-surface/40 transition-all text-center shadow-sm">
                         <div className="font-black text-brand-secondary text-sm uppercase tracking-tighter">{room.name}</div>
                         <div className="text-[7px] font-black text-brand-primary mt-1 uppercase bg-brand-primary/10 rounded-full px-2 py-0.5 inline-block">Cap: {room.capacity}</div>
@@ -341,26 +311,43 @@ onDragOver={(e) => handleDragOverFloor(e, floor)}
                             key={day.toISOString()} 
                             onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
                             onDrop={(e) => handleDrop(e, room.id, dateStr)}
-                            className={`p-1.5 border-r border-brand-surface min-w-[40px] h-full relative transition-all group/cell
+                            className={`p-0.5 border-r border-brand-surface min-w-[40px] min-h-14 relative transition-all group/cell
                               ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
                               ${isShadow ? 'bg-brand-primary ring-4 ring-brand-primary ring-inset scale-95 z-10 shadow-2xl' : ''}
                             `}
                           >
-                            <div className="flex flex-col gap-1 relative z-10">
+                            <div className="flex flex-col gap-0.5 relative z-10 w-full">
                               {dayBookings.map(b => (
                                 <div
                                   key={b.id}
                                   draggable
                                   onDragStart={(e) => handleDragStart(e, b)}
+                                  onDragEnd={() => { setDraggedBooking(null); setDragOverCell(null); }}
                                   onClick={() => setEditingBooking(b)}
-                                  className="booking-card w-full p-1.5 bg-brand-secondary text-white rounded-md text-[8px] font-black uppercase cursor-grab active:cursor-grabbing hover:bg-brand-primary transition-all border border-white/10"
+                                  className="group/booking relative w-full px-1.5 py-1 bg-brand-secondary text-white rounded-sm text-[7px] font-black uppercase cursor-grab active:cursor-grabbing transition-all border border-white/5 flex items-start shadow-sm shrink-0"
                                 >
-                                  {b.title}
+                                  <span className="break-words w-full pointer-events-none leading-tight">
+                                    {b.title}
+                                  </span>
+
+                                  {/* HOVER BALONU (TOOLTIP) */}
+                                 <div className={`absolute bottom-full left-0 mb-2 z-[100] w-max max-w-[200px] bg-brand-secondary p-2 rounded shadow-2xl border border-white/20 pointer-events-none animate-in fade-in zoom-in duration-150 ${draggedBooking?.id === b.id ? 'hidden' : 'invisible group-hover/booking:visible'}`}>
+                                                                     <p className="text-[9px] leading-tight whitespace-normal break-words font-black text-white uppercase tracking-tight">
+                                      {b.title}
+                                    </p>
+                                    <div className="absolute top-full left-2 border-4 border-transparent border-t-brand-secondary"></div>
+                                  </div>
                                 </div>
                               ))}
                             </div>
+                            
                             {dayBookings.length < room.capacity && (
-                              <button onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} className="absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center bg-brand-primary text-white rounded-full opacity-0 group-hover/cell:opacity-100 transition-all z-30 shadow-lg font-bold text-sm">+</button>
+                              <button 
+                                onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} 
+                                className="absolute bottom-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-brand-primary text-white rounded-full opacity-0 group-hover/cell:opacity-100 transition-all z-30 shadow-lg font-bold text-[10px]"
+                              >
+                                +
+                              </button>
                             )}
                           </td>
                         );
