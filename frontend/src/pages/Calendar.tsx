@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment, useMemo } from 'react';
+import { useEffect, useState, Fragment, useMemo, useRef } from 'react'; // useRef eklendi
 import { getRooms } from '../api/rooms';
 import { getBookings, createBooking, updateBooking, deleteBooking } from '../api/bookings';
 import type { Room, Booking } from '../types/index';
@@ -44,9 +44,7 @@ export function Calendar() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewWindow, setViewWindow] = useState<7 | 15>(15);
-  // Kapalı katları tutan state (Collapse özelliği için)
-  const [collapsedFloors, setCollapsedFloors] = useState<string[]>([]);
-  
+  const [collapsedFloors, setCollapsedFloors] = useState<string[]>(['M', 'S']);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -59,6 +57,9 @@ export function Calendar() {
   const [editForm, setEditForm] = useState<any>({ title: '', start_date: '', end_date: '', duration: 1 });
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
+  
+  // Zamanlayıcı referansı
+  const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
   const today = new Date();
@@ -91,12 +92,41 @@ export function Calendar() {
     }
   }, [editingBooking]);
 
-  // Kat açma/kapama fonksiyonu
   const toggleFloor = (floor: string) => {
     setCollapsedFloors(prev => 
       prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor]
     );
   };
+
+  const handleDragEnterFloor = (floor: string) => {
+    // Önce varsa eski zamanlayıcıyı temizle
+    if (dragTimeoutRef.current) clearTimeout(dragTimeoutRef.current);
+    
+    dragTimeoutRef.current = setTimeout(() => {
+      if (collapsedFloors.includes(floor)) {
+        setCollapsedFloors(prev => prev.filter(f => f !== floor));
+      }
+    }, 500); 
+  };
+
+  const handleDragLeaveFloor = () => {
+    if (dragTimeoutRef.current) {
+      clearTimeout(dragTimeoutRef.current);
+      dragTimeoutRef.current = null;
+    }
+  };
+
+  const handleDragOverFloor = (e: React.DragEvent, floor: string) => {
+  e.preventDefault(); // Sürüklemeye izin ver
+  
+  // Eğer zaten bir zamanlayıcı yoksa ve kat kapalıysa başlat
+  if (!dragTimeoutRef.current && collapsedFloors.includes(floor)) {
+    dragTimeoutRef.current = setTimeout(() => {
+      setCollapsedFloors(prev => prev.filter(f => f !== floor));
+      dragTimeoutRef.current = null; // Açıldıktan sonra sıfırla
+    }, 500); // Bekleme süresini 0.5 saniyeye çektik (daha seri)
+  }
+};
 
   const getIsShadow = (roomId: number, dateStr: string) => {
     if (!draggedBooking || !dragOverCell) return false;
@@ -212,12 +242,6 @@ export function Calendar() {
     });
   }
 
-  if (loading) return (
-    <div className="h-screen flex items-center justify-center font-black text-brand-secondary animate-pulse text-2xl uppercase tracking-widest font-brand">
-      InI Preparing...
-    </div>
-  );
-
   return (
     <div className={`min-h-screen bg-brand-surface px-4 pt-2 pb-8 font-brand transition-all duration-500 ${viewWindow === 15 ? 'view-15' : ''}`}>
       
@@ -257,8 +281,8 @@ export function Calendar() {
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-brand-surface/30">
-                <th className="sticky left-0 z-40 bg-brand-surface p-4 sticky-resource border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md transition-all">Resources</th>
+               <tr className="bg-brand-surface/30">
+                <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md transition-all">Resources</th>
                 {days.map(day => {
                   const isToday = day.getTime() === today.getTime();
                   return (
@@ -273,22 +297,35 @@ export function Calendar() {
             <tbody className="ini-divide">
               {['F', 'M', 'S'].map(floor => (
                 <Fragment key={floor}>
-                  {/* Floor Satırı (Tıklanabilir Harmonic Yapı) */}
-                  <tr 
-                    onClick={() => toggleFloor(floor)}
-                    className="cursor-pointer bg-gradient-to-r from-brand-secondary to-brand-secondary/90 text-[9px] font-black uppercase tracking-[0.4em] text-white hover:brightness-110 transition-all select-none"
-                  >
-                    <td className="sticky left-0 z-30 bg-brand-secondary px-4 py-2 sticky-resource border-y border-white/5 text-center shadow-md">
-                      <span className="flex items-center justify-center gap-2">
-                        {collapsedFloors.includes(floor) ? '▶' : '▼'} Floor {floor}
-                      </span>
-                    </td>
-                    <td colSpan={days.length} className="border-y border-white/5 opacity-30 italic pl-4 text-[8px] tracking-widest">
-                      {collapsedFloors.includes(floor) ? 'Click to Expand' : 'InI Operational Sector'}
-                    </td>
-                  </tr>
-
-                  {/* Odalar (Eğer kat kapalı değilse göster) */}
+        <tr 
+  onClick={() => toggleFloor(floor)}
+onDragOver={(e) => handleDragOverFloor(e, floor)} 
+  onDragLeave={handleDragLeaveFloor}
+  className={`cursor-pointer transition-all duration-300 select-none border-y border-white/10
+    ${dragOverCell ? 'py-4' : 'py-2'} 
+    ${collapsedFloors.includes(floor) 
+      ? 'bg-brand-secondary hover:bg-brand-primary/80' 
+      : 'bg-gradient-to-r from-brand-secondary to-brand-secondary/90'}
+  `}
+>
+  <td className="sticky left-0 z-30 bg-brand-secondary px-4 py-3 sticky-resource text-center shadow-xl border-r border-white/10">
+    <span className="flex items-center justify-center gap-2 text-white font-black uppercase text-[10px] tracking-widest">
+      {collapsedFloors.includes(floor) ? '▶' : '▼'} FLOOR {floor}
+    </span>
+  </td>
+  <td colSpan={days.length} className="relative overflow-hidden group">
+    {/* Sürükleme sırasında arkada yanan hafif bir ışık efekti */}
+    <div className={`absolute inset-0 transition-opacity duration-300 bg-brand-primary/20 ${draggedBooking ? 'opacity-100' : 'opacity-0'}`} />
+    
+    <div className="absolute inset-0 flex items-center justify-center">
+      <span className="text-white font-black italic tracking-[0.5em] text-[9px] animate-pulse">
+        {collapsedFloors.includes(floor) 
+          ? "● ● ● HOLD TO REVEAL ● ● ●" 
+          : "SECTION ACTIVE"}
+      </span>
+    </div>
+  </td>
+</tr>
                   {!collapsedFloors.includes(floor) && rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
                     <tr key={room.id} className="group/row border-b border-brand-surface animate-in fade-in slide-in-from-top-1 duration-200">
                       <td className="sticky left-0 z-30 bg-white p-4 sticky-resource border-r border-brand-primary/5 group-hover/row:bg-brand-surface/40 transition-all text-center shadow-sm">
@@ -322,14 +359,8 @@ export function Calendar() {
                                 </div>
                               ))}
                             </div>
-
                             {dayBookings.length < room.capacity && (
-                              <button 
-                                onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} 
-                                className="absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center bg-brand-primary text-white rounded-full opacity-0 group-hover/cell:opacity-100 transition-all z-30 shadow-lg hover:scale-110 active:scale-90 font-bold text-sm"
-                              >
-                                +
-                              </button>
+                              <button onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} className="absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center bg-brand-primary text-white rounded-full opacity-0 group-hover/cell:opacity-100 transition-all z-30 shadow-lg font-bold text-sm">+</button>
                             )}
                           </td>
                         );
@@ -359,10 +390,7 @@ export function Calendar() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black uppercase ml-1 text-brand-muted tracking-widest">Departure</label>
-                  <input 
-                    type="date" 
-                    value={editingBooking ? editForm.end_date : newBookingData.endDate} 
-                    onChange={(e) => {
+                  <input type="date" value={editingBooking ? editForm.end_date : newBookingData.endDate} onChange={(e) => {
                       const newEnd = e.target.value;
                       if (editingBooking) {
                         const start = new Date(editForm.start_date);
@@ -371,9 +399,7 @@ export function Calendar() {
                       } else {
                         setNewBookingData({...newBookingData, endDate: newEnd});
                       }
-                    }} 
-                    className="bg-brand-surface p-4 rounded-md font-black w-full border-0 focus:ring-2 ring-brand-primary outline-none text-xs" 
-                  />
+                    }} className="bg-brand-surface p-4 rounded-md font-black w-full border-0 focus:ring-2 ring-brand-primary outline-none text-xs" />
                 </div>
               </div>
             </div>
