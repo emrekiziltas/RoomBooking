@@ -17,11 +17,9 @@ interface RoomRange {
 }
 
 export function AvailableRanges() {
-  // ✅ 2 gün sonrasını default olarak ayarla
   const getDefaultDate = () => {
     const date = new Date();
-    date.setDate(date.getDate() );
-    return date.toISOString().split('T')[0]; // YYYY-MM-DD formatı
+    return date.toISOString().split('T')[0];
   };
 
   const [ranges, setRanges] = useState<RoomRange[]>([]);
@@ -46,8 +44,6 @@ export function AvailableRanges() {
       const response = await getAvailableRanges(startDate, days);
       setRanges(response.data || []);
     } catch (error) {
-      console.error('Error fetching ranges:', error);
-      setRanges([]);
       setToast({ message: 'Failed to fetch available rooms', type: 'error' });
       setTimeout(() => setToast(null), 3000);
     } finally {
@@ -59,59 +55,33 @@ export function AvailableRanges() {
     fetchRanges();
   }, []);
 
-  // ESC tuşu ile modal'ı kapat
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsModalOpen(false);
-    };
-    if (isModalOpen) {
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
-    }
-  }, [isModalOpen]);
-
   const handleBookingSubmit = async () => {
     if (!bookingPayload || !bookingPayload.title) return;
     setSubmitting(true);
 
-    const color = getRoomColor(bookingPayload.roomName);
+    const prefix = bookingPayload.roomName?.[0]?.toUpperCase();
+    const colorMap: Record<string, string> = { 'F': 'var(--brand-primary)', 'M': 'var(--brand-success)', 'S': 'var(--brand-danger)' };
+    const color = colorMap[prefix] || 'var(--brand-secondary)';
 
     try {
-      const payload = {
+      await createBooking({
         room_id: Number(bookingPayload.roomId),
         title: bookingPayload.title.toUpperCase(),
         color: color,
         start_time: `${bookingPayload.start} 08:30:00`,
         end_time: `${bookingPayload.end} 17:30:00`,
-      };
-
-      await createBooking(payload);
+      });
 
       setIsModalOpen(false);
       setToast({ message: 'Booking created successfully! ✓', type: 'success' });
       setTimeout(() => setToast(null), 3000);
       fetchRanges();
     } catch (error: any) {
-      const serverMessage = error.response?.data?.message || "Validation error.";
-      console.error("Error details:", error.response?.data);
-      setToast({ message: `Error: ${serverMessage}`, type: 'error' });
+      setToast({ message: `Error: ${error.response?.data?.message || "Validation error."}`, type: 'error' });
       setTimeout(() => setToast(null), 5000);
     } finally {
       setSubmitting(false);
     }
-  };
-
-  function getRoomColor(roomName: string): string {
-    const prefix = roomName?.[0]?.toUpperCase();
-    if (prefix === 'F') return '#3B82F6';
-    if (prefix === 'M') return '#10B981';
-    if (prefix === 'S') return '#F97316';
-    return '#6B7280';
-  }
-
-  const displayDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   const groupedRanges = useMemo(() => {
@@ -130,82 +100,63 @@ export function AvailableRanges() {
     }, {} as Record<string, RoomRange[]>);
   }, [ranges, startDate]);
 
-  const FLOORS: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    F: { label: 'First Floor', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-500' },
-    M: { label: 'Mezzanine Floor', color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-500' },
-    S: { label: 'Second Floor', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-500' },
+  const FLOORS: Record<string, { label: string; color: string; border: string }> = {
+    F: { label: 'FIRST FLOOR', color: 'text-brand-primary', border: 'border-brand-primary' },
+    M: { label: 'MEZZANINE', color: 'text-brand-success', border: 'border-brand-success' },
+    S: { label: 'SECOND FLOOR', color: 'text-brand-danger', border: 'border-brand-danger' },
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
-      {/* Toast Notification */}
+    <div className="min-h-screen bg-brand-surface p-4 md:p-8 font-brand">
+      {/* Toast - Standardized */}
       {toast && (
-        <div className={`fixed top-8 right-8 z-[1100] animate-in slide-in-from-top-4 duration-300 ${
-          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
-        } text-white px-6 py-4 rounded-2xl shadow-2xl font-bold`}>
+        <div className={`fixed top-8 right-8 z-[1100] px-6 py-4 rounded-ini shadow-2xl font-black text-[11px] uppercase tracking-widest animate-in slide-in-from-right-5 ${
+          toast.type === 'success' ? 'bg-brand-success text-white' : 'bg-brand-danger text-white'
+        }`}>
           {toast.message}
         </div>
       )}
 
-      {/* HEADER */}
-      <div className="max-w-6xl mx-auto mb-8">
-        <div className="bg-white rounded-[2rem] shadow-sm border border-gray-200 p-8">
+      {/* HEADER & FILTER */}
+      <div className="max-w-7xl mx-auto mb-10">
+        <div className="bg-white rounded-ini border-2 border-brand-surface p-8 shadow-sm">
           <div className="flex items-center gap-4 mb-8">
-            <div className="h-16 w-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg">
+            <div className="h-12 w-12 bg-brand-secondary rounded-ini flex items-center justify-center text-white text-xl">
               📅
             </div>
             <div>
-              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Find Available Space</h1>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mt-1">Multi-day room availability search</p>
+              <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic leading-none">
+                Range <span className="text-brand-primary">Search</span>
+              </h1>
+              <p className="text-brand-muted text-[9px] font-black uppercase tracking-[0.3em] mt-1">Multi-day sequence analysis</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black uppercase text-slate-400 ml-2 tracking-wider">Start Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full p-4 border-0 rounded-xl bg-slate-50 font-bold focus:ring-2 ring-blue-500 outline-none transition-all hover:bg-slate-100"
-              />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-brand-muted ml-1 tracking-widest">Initial Date</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-3 bg-brand-surface border-0 rounded-ini font-black text-[11px] uppercase outline-none focus:ring-2 ring-brand-primary transition-all" />
             </div>
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black uppercase text-slate-400 ml-2 tracking-wider">Duration (Days)</label>
-              <input
-                type="number"
-                min="1"
-                max="30"
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
-                className="w-full p-4 border-0 rounded-xl bg-slate-50 font-bold focus:ring-2 ring-blue-500 outline-none transition-all hover:bg-slate-100"
-              />
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-brand-muted ml-1 tracking-widest">Cycle Duration</label>
+              <input type="number" min="1" value={days} onChange={(e) => setDays(Number(e.target.value))} className="w-full p-3 bg-brand-surface border-0 rounded-ini font-black text-[11px] uppercase outline-none focus:ring-2 ring-brand-primary" />
             </div>
             <div className="flex items-end">
-              <button
-                onClick={fetchRanges}
-                disabled={loading}
-                className="w-full px-8 py-4 bg-slate-900 text-white rounded-xl font-black uppercase hover:bg-blue-600 transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Searching...' : 'Search'}
+              <button onClick={fetchRanges} disabled={loading} className="w-full py-3 bg-brand-secondary text-white rounded-ini font-black uppercase text-[11px] tracking-widest hover:bg-brand-primary transition-all active:scale-95 disabled:opacity-50">
+                {loading ? 'ANALYZING...' : 'EXECUTE SEARCH'}
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* RESULTS */}
-      <div className="max-w-6xl mx-auto">
+      {/* RESULTS GRID */}
+      <div className="max-w-7xl mx-auto">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-32">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-4"></div>
-            <p className="text-slate-600 font-black uppercase tracking-wider text-sm">Scanning Resources...</p>
-          </div>
+          <div className="py-20 text-center font-black text-brand-muted text-[10px] tracking-[0.4em] animate-pulse uppercase">Scanning Infrastructure...</div>
         ) : Object.keys(groupedRanges).length === 0 ? (
-          <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-            <div className="text-6xl mb-6">🔍</div>
-            <p className="text-slate-300 font-black uppercase tracking-widest text-sm mb-2">No Available Rooms</p>
-            <p className="text-slate-400 text-xs">Try different dates or fewer days</p>
+          <div className="text-center py-20 bg-white rounded-ini border-2 border-dashed border-brand-surface">
+            <p className="text-brand-muted font-black text-[10px] uppercase tracking-widest text-sm">Zero matching resources found.</p>
           </div>
         ) : (
           Object.keys(FLOORS).map((prefix) => {
@@ -215,9 +166,8 @@ export function AvailableRanges() {
             return (
               <div key={prefix} className="mb-12">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className={`h-3 w-3 rounded-full ${floor.color.replace('text-', 'bg-')}`}></div>
-                  <h2 className={`text-sm font-black ${floor.color} uppercase tracking-wider`}>{floor.label}</h2>
-                  <div className="flex-1 h-px bg-slate-200" />
+                  <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>{floor.label}</h2>
+                  <div className="flex-1 h-px bg-gray-200" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {floorRanges.map((item) => (
@@ -225,46 +175,37 @@ export function AvailableRanges() {
                       key={item.room.id}
                       onClick={() => {
                         const range = item.ranges[0];
-                        setBookingPayload({
-                          roomId: item.room.id,
-                          roomName: item.room.name,
-                          start: range.start,
-                          end: range.end,
-                          title: ''
-                        });
+                        setBookingPayload({ roomId: item.room.id, roomName: item.room.name, start: range.start, end: range.end, title: '' });
                         setIsModalOpen(true);
                       }}
-                      className={`${floor.bg} border-2 border-transparent hover:border-blue-400 rounded-[2rem] p-6 shadow-md hover:shadow-2xl transition-all duration-300 cursor-pointer group`}
+                      className="ini-card p-6 hover:border-brand-primary transition-all cursor-pointer group"
                     >
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="flex justify-between items-start mb-6">
                         <div>
-                          <h3 className={`font-black text-2xl ${floor.color} uppercase tracking-tight`}>
-                            {item.room.name}
-                          </h3>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-                            Capacity: {item.room.capacity} 👤
-                          </p>
+                          <h3 className={`font-black text-xl ${floor.color} uppercase tracking-tighter leading-none`}>{item.room.name}</h3>
+                          <p className="text-[9px] font-black text-brand-muted uppercase tracking-widest mt-1 italic">Cap: {item.room.capacity} units</p>
                         </div>
-                        <div className="bg-white/90 px-3 py-1.5 rounded-xl text-xs font-black shadow-sm group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                          BOOK →
+                        <div className="bg-brand-surface px-3 py-1 rounded-ini text-[9px] font-black text-brand-secondary uppercase border border-brand-surface group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                          SELECT
                         </div>
                       </div>
+
                       {item.ranges.map((range, idx) => (
-                        <div key={idx} className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-white/50 space-y-3">
+                        <div key={idx} className="bg-brand-surface rounded-ini p-4 border border-brand-surface space-y-3">
                           <div className="flex items-center justify-between">
-                            <div className="flex-1 text-center">
-                              <span className="text-[9px] font-black text-slate-400 uppercase block mb-1">From</span>
-                              <span className="text-sm font-black text-slate-700">{displayDate(range.start)}</span>
+                            <div className="text-center flex-1">
+                              <span className="text-[8px] font-black text-brand-muted uppercase block">Start</span>
+                              <span className="text-[11px] font-black text-brand-secondary">{new Date(range.start).toLocaleDateString('en-GB')}</span>
                             </div>
-                            <div className="px-3 text-slate-300 font-black">→</div>
-                            <div className="flex-1 text-center">
-                              <span className="text-[9px] font-black text-slate-400 uppercase block mb-1">Until</span>
-                              <span className="text-sm font-black text-slate-700">{displayDate(range.end)}</span>
+                            <div className="text-brand-muted font-black px-2">→</div>
+                            <div className="text-center flex-1">
+                              <span className="text-[8px] font-black text-brand-muted uppercase block">End</span>
+                              <span className="text-[11px] font-black text-brand-secondary">{new Date(range.end).toLocaleDateString('en-GB')}</span>
                             </div>
                           </div>
-                          <div className="pt-3 border-t border-slate-200 flex justify-center">
-                            <span className="text-[10px] font-black bg-emerald-500 text-white px-4 py-1.5 rounded-full uppercase tracking-wider shadow-md">
-                              {range.days} Consecutive Days
+                          <div className="pt-2 border-t border-white/50 flex justify-center">
+                            <span className="text-[9px] font-black bg-brand-success text-white px-3 py-1 rounded-ini uppercase tracking-widest shadow-sm">
+                              {range.days} DAYS CONTINUOUS
                             </span>
                           </div>
                         </div>
@@ -278,72 +219,52 @@ export function AvailableRanges() {
         )}
       </div>
 
-      {/* BOOKING MODAL */}
+      {/* MODAL */}
       {isModalOpen && bookingPayload && (
-        <>
-          <div
-            className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[1000] animate-in fade-in duration-200"
-            onClick={() => setIsModalOpen(false)}
-          />
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 pointer-events-none">
-            <div
-              className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 text-2xl font-bold transition-colors"
-              >
-                ×
-              </button>
+        <div className="fixed inset-0 flex items-center justify-center z-[1000] p-4">
+          <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in" onClick={() => setIsModalOpen(false)} />
+          <div className="ini-card max-w-md w-full p-10 relative z-10 animate-in zoom-in-95">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic">Sequence Booking</h2>
+              <div className="mt-6 p-4 bg-brand-surface rounded-ini border border-brand-surface">
+                <p className="text-[10px] font-black text-brand-secondary uppercase tracking-widest">{bookingPayload.roomName}</p>
+                <p className="text-[9px] text-brand-primary font-black mt-1 uppercase tracking-widest">
+                  {new Date(bookingPayload.start).toLocaleDateString('en-GB')} » {new Date(bookingPayload.end).toLocaleDateString('en-GB')}
+                </p>
+              </div>
+            </div>
 
-              <div className="text-center mb-8">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 rounded-3xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border-2 border-blue-200">
-                  ⚡
-                </div>
-                <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Quick Booking</h2>
-                <div className="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-sm font-black text-slate-700 uppercase tracking-wide">{bookingPayload.roomName}</p>
-                  <p className="text-xs text-blue-600 font-bold mt-2">
-                    {displayDate(bookingPayload.start)} → {displayDate(bookingPayload.end)}
-                  </p>
-                </div>
+            <div className="space-y-6">
+              <div>
+                <label className="text-[9px] font-black uppercase text-brand-primary ml-1 mb-2 block tracking-widest">Mission Title</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={bookingPayload.title}
+                  onChange={(e) => setBookingPayload({ ...bookingPayload, title: e.target.value })}
+                  placeholder="E.G. DEVELOPMENT CYCLE"
+                  className="w-full bg-brand-surface border-0 rounded-ini px-5 py-4 font-black text-[11px] outline-none focus:ring-1 ring-brand-primary uppercase"
+                />
               </div>
 
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 ml-3 mb-2 tracking-wider">
-                    Title / Purpose
-                  </label>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={bookingPayload.title}
-                    onChange={(e) => setBookingPayload({ ...bookingPayload, title: e.target.value })}
-                    placeholder="E.G. BOARD MEETING"
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-5 font-black text-lg outline-none focus:ring-4 ring-blue-500/20 focus:border-blue-500 uppercase transition-all"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    disabled={submitting || !bookingPayload.title}
-                    onClick={handleBookingSubmit}
-                    className="flex-[2] bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white py-5 rounded-2xl font-black uppercase shadow-xl hover:bg-blue-700 transition-all active:scale-95 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? 'Creating...' : 'Confirm Booking'}
-                  </button>
-                  <button
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 bg-slate-100 text-slate-500 py-5 rounded-2xl font-black uppercase hover:bg-slate-200 transition-all"
-                  >
-                    Cancel
-                  </button>
-                </div>
+              <div className="flex gap-3">
+                <button
+                  disabled={submitting || !bookingPayload.title}
+                  onClick={handleBookingSubmit}
+                  className="flex-[2] bg-brand-secondary text-white py-4 rounded-ini font-black uppercase text-[10px] tracking-widest hover:bg-brand-primary transition-all disabled:opacity-30"
+                >
+                  {submitting ? 'EXECUTING...' : 'CONFIRM SEQUENCE'}
+                </button>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 bg-brand-surface text-brand-muted py-4 rounded-ini font-black uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-all"
+                >
+                  ABORT
+                </button>
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
