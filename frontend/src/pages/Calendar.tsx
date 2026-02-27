@@ -1,7 +1,16 @@
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useState, Fragment, useMemo } from 'react';
 import { getRooms } from '../api/rooms';
 import { getBookings, createBooking, updateBooking, deleteBooking } from '../api/bookings';
 import type { Room, Booking } from '../types/index';
+
+// Dosyanın en üstüne, importların altına ekle:
+const scrollbarHideStyle = {
+  msOverflowStyle: 'none',
+  scrollbarWidth: 'none',
+  '&::-webkit-scrollbar': {
+    display: 'none'
+  }
+} as any;
 
 // --- YARDIMCI FONKSİYONLAR ---
 function getDaysForPeriod(startDate: Date, daysCount: number) {
@@ -15,10 +24,17 @@ function getDaysForPeriod(startDate: Date, daysCount: number) {
 }
 
 function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boolean): string {
-  if (bookedCount >= capacity) return 'bg-red-600 text-white border-red-700 shadow-inner';
-  if (bookedCount > 0) return 'bg-yellow-400 text-slate-900 border-yellow-500 shadow-md';
-  if (isWeekend) return 'bg-slate-300 hover:bg-slate-400 border-slate-400 text-slate-600';
-  return 'bg-white hover:bg-slate-50 border-slate-100 text-slate-400';
+  // TAM DOLU: Artık daha koyu bir kırmızı/bordo tonu (Rose-900 zemin, Beyaz yazı)
+  if (bookedCount >= capacity) return 'bg-rose-700 text-white border-rose-800 shadow-inner ring-1 ring-rose-900/20'; 
+  
+  // KISMİ DOLU: Indigo (Mor-Mavi) tonu
+  if (bookedCount > 0) return 'bg-indigo-100 text-indigo-900 border-indigo-200 shadow-sm'; 
+  
+  // HAFTA SONU: Belirgin gri
+  if (isWeekend) return 'bg-slate-50 border-slate-50 text-slate-500'; 
+  
+  // BOŞ: Saf beyaz
+  return 'bg-white border-slate-200 text-slate-400'; 
 }
 
 const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
@@ -33,7 +49,7 @@ const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: 
         setLocalValue(e.target.value);
         onChange(e.target.value);
       }}
-      className="w-full bg-slate-50 border-0 rounded-2xl px-6 py-4 font-black text-lg outline-none uppercase focus:ring-2 ring-blue-500/20 transition-all"
+      className="w-full bg-slate-100 border-0 rounded-2xl px-6 py-4 font-black text-lg outline-none uppercase focus:ring-2 ring-indigo-500 transition-all placeholder:text-slate-400"
       placeholder={placeholder}
     />
   );
@@ -43,8 +59,7 @@ export function Calendar() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewWindow, setViewWindow] = useState<7 | 15 >(15);
-  
+  const [viewWindow, setViewWindow] = useState<7 | 15>(15);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -58,7 +73,7 @@ export function Calendar() {
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
 
-  const days = getDaysForPeriod(startDate, viewWindow);
+  const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -68,10 +83,43 @@ export function Calendar() {
       setRooms(r.data);
       setBookings(b.data);
       setLoading(false);
-    } catch (err) { console.error("Veri çekme hatası:", err); }
+    } catch (err) { console.error("Veri hatası:", err); }
   };
 
   useEffect(() => { fetchData(); }, []);
+
+useEffect(() => {
+  if (editingBooking) {
+    // Saatleri temizleyerek sadece gün bazlı obje oluşturuyoruz
+    const start = new Date(editingBooking.start_time.split(/[\sT]/)[0]);
+    const end = new Date(editingBooking.end_time.split(/[\sT]/)[0]);
+    
+    // Milisaniye farkını alıp güne çeviriyoruz
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    setEditForm({
+      title: editingBooking.title,
+      start_date: editingBooking.start_time.split(/[\sT]/)[0],
+      end_date: editingBooking.end_time.split(/[\sT]/)[0],
+      duration: diffDays // Artık net gece sayısını tutuyor
+    });
+  }
+}, [editingBooking]);
+
+
+  const getIsShadow = (roomId: number, dateStr: string) => {
+    if (!draggedBooking || !dragOverCell) return false;
+    if (dragOverCell.roomId !== roomId) return false;
+    const startTs = new Date(draggedBooking.start_time).setHours(0,0,0,0);
+    const endTs = new Date(draggedBooking.end_time).setHours(0,0,0,0);
+    const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24));
+    const currentCellDate = new Date(dateStr);
+    const dragStartDate = new Date(dragOverCell.date);
+    const dragEndDate = new Date(dragStartDate);
+    dragEndDate.setDate(dragStartDate.getDate() + durationDays);
+    return currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
+  };
 
   const moveNext = () => {
     const d = new Date(startDate);
@@ -86,7 +134,7 @@ export function Calendar() {
   };
 
   const handleCreate = async () => {
-    if (!newBookingData.title) { alert("İsim girmelisiniz!"); return; }
+    if (!newBookingData.title) return;
     try {
       await createBooking({
         room_id: newBookingData.roomId,
@@ -97,12 +145,11 @@ export function Calendar() {
       setIsNewBookingModalOpen(false);
       setNewBookingData({ roomId: 0, startDate: '', endDate: '', title: '' });
       await fetchData();
-    } catch (err: any) { alert("Kayıt oluşturulamadı."); }
+    } catch (err) { alert("Hata oluştu."); }
   };
 
   const handleUpdate = async () => {
     if (!editingBooking) return;
-    if (editForm.end_date < editForm.start_date) { alert("Bitiş tarihi hatalı!"); return; }
     try {
       await updateBooking(editingBooking.id, {
         title: editForm.title,
@@ -111,7 +158,7 @@ export function Calendar() {
       });
       setEditingBooking(null);
       await fetchData();
-    } catch (err: any) { alert("Güncelleme hatası."); }
+    } catch (err) { alert("Güncellenemedi."); }
   };
 
   const handleDelete = async (id: number) => {
@@ -120,10 +167,9 @@ export function Calendar() {
       await deleteBooking(id);
       setEditingBooking(null);
       await fetchData();
-    } catch (err) { alert("Silme hatası."); }
+    } catch (err) { alert("Hata."); }
   };
 
-  // --- DRAG & DROP (Süreyi Koruyan Versiyon) ---
   const handleDragStart = (e: React.DragEvent, booking: Booking) => {
     setDraggedBooking(booking);
     e.dataTransfer.effectAllowed = 'move';
@@ -137,37 +183,47 @@ export function Calendar() {
   const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
     e.preventDefault();
     if (!draggedBooking) return;
-
     const start = new Date(draggedBooking.start_time);
     const end = new Date(draggedBooking.end_time);
     const durationMs = end.getTime() - start.getTime();
-
     const newStart = new Date(`${targetDate}T${start.toTimeString().split(' ')[0]}`);
     const newEnd = new Date(newStart.getTime() + durationMs);
 
-    const formatDateTime = (date: Date) => {
-      return date.getFullYear() + '-' + 
-             String(date.getMonth() + 1).padStart(2, '0') + '-' + 
-             String(date.getDate()).padStart(2, '0') + 'T' + 
-             String(date.getHours()).padStart(2, '0') + ':' + 
-             String(date.getMinutes()).padStart(2, '0') + ':00';
-    };
+    const format = (d: Date) => d.toISOString().split('.')[0];
 
     try {
       await updateBooking(draggedBooking.id, {
         room_id: targetRoomId,
         title: draggedBooking.title,
-        start_time: formatDateTime(newStart),
-        end_time: formatDateTime(newEnd),
+        start_time: format(newStart),
+        end_time: format(newEnd),
       });
       await fetchData();
-    } catch (err: any) {
-      alert("Taşıma işlemi başarısız: " + (err.response?.data?.message || "Oda dolu."));
-    } finally {
-      setDraggedBooking(null);
-      setDragOverCell(null);
-    }
+    } catch (err) { alert("İşlem başarısız."); }
+    finally { setDraggedBooking(null); setDragOverCell(null); }
   };
+
+const handleStartDateChange = (newStartStr: string) => {
+  if (!newStartStr) return;
+  
+  const newStartDate = new Date(newStartStr);
+  const newEndDate = new Date(newStartDate);
+  
+  // Örn: Duration 1 ise, 01.03.2026 üzerine 1 gün ekler -> 02.03.2026 olur.
+  newEndDate.setDate(newStartDate.getDate() + (editForm.duration || 0));
+  
+  // ISO formatına çevirirken yerel saat dilimi kaymasını önlemek için manuel format:
+  const y = newEndDate.getFullYear();
+  const m = String(newEndDate.getMonth() + 1).padStart(2, '0');
+  const d = String(newEndDate.getDate()).padStart(2, '0');
+  const formattedEnd = `${y}-${m}-${d}`;
+  
+  setEditForm({
+    ...editForm,
+    start_date: newStartStr,
+    end_date: formattedEnd
+  });
+};
 
   function getBookingsForRoomAndDay(roomId: number, day: Date) {
     const ts = new Date(day).setHours(0, 0, 0, 0);
@@ -179,196 +235,158 @@ export function Calendar() {
     });
   }
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 animate-pulse uppercase tracking-widest">Yükleniyor...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-black text-slate-900 animate-pulse text-2xl uppercase">InI Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-[#F1F3F6] p-4 md:p-8 font-sans">
       
       {/* HEADER */}
-      <div className="max-w-[100vw] mx-auto mb-6 bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-        <div className="flex flex-col lg:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">InI Booking v2</h1>
-              <p className="text-blue-600 text-[10px] font-black uppercase tracking-widest mt-1">
-                {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} - {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </p>
-            </div>
+      <div className="max-w-[100vw] mx-auto mb-8 flex flex-col md:flex-row justify-between items-end gap-6 border-b-2 border-slate-200 pb-8">
+        <div>
+          <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">
+            InI Booking <span className="text-[12px] bg-slate-900 text-white px-3 py-1 rounded ml-2 align-middle">PRO v2</span>
+          </h1>
+          <p className="text-slate-500 text-[11px] font-black uppercase tracking-[0.3em] mt-3">
+            {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })} — {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex bg-slate-200 p-1 rounded-xl border border-slate-300">
+            {[7, 15].map((v) => (
+              <button key={v} onClick={() => setViewWindow(v as any)} className={`px-6 py-2 rounded-lg text-[11px] font-black transition-all ${viewWindow === v ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>{v} GÜN</button>
+            ))}
           </div>
-
-          <div className="flex flex-wrap justify-center items-center gap-4">
-            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
-              {[7, 15].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setViewWindow(v as any)}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${viewWindow === v ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  {v} GÜN
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-              <button onClick={movePrev} className="p-3 hover:bg-white hover:text-blue-600 rounded-xl transition-all font-bold text-slate-400">◀</button>
-              <button onClick={() => { const d = new Date(); d.setHours(0,0,0,0); setStartDate(d); }} className="px-6 py-2 bg-white text-slate-900 rounded-xl font-black text-[11px] uppercase shadow-sm border border-slate-100">BUGÜN</button>
-              <button onClick={moveNext} className="p-3 hover:bg-white hover:text-blue-600 rounded-xl transition-all font-bold text-slate-400">▶</button>
-            </div>
+          <div className="flex items-center gap-2">
+            <button onClick={movePrev} className="w-12 h-12 flex items-center justify-center bg-white border-2 border-slate-200 rounded-2xl hover:border-indigo-500 transition-all text-slate-900 font-bold">←</button>
+            <button onClick={() => setStartDate(new Date(new Date().setHours(0,0,0,0)))} className="px-8 py-3 text-[11px] font-black uppercase tracking-widest text-white bg-slate-900 rounded-2xl hover:bg-indigo-600 transition-all shadow-lg">Bugün</button>
+            <button onClick={moveNext} className="w-12 h-12 flex items-center justify-center bg-white border-2 border-slate-200 rounded-2xl hover:border-indigo-500 transition-all text-slate-900 font-bold">→</button>
           </div>
         </div>
       </div>
 
       {/* TABLO */}
-      <div className="max-w-[100vw] mx-auto bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto touch-pan-x select-none">
-          <table className="w-full border-collapse" style={{ minWidth: viewWindow === 30 ? '1600px' : '1000px' }}>
+      <div className="bg-white rounded-[2.5rem] border-2 border-slate-200 shadow-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-slate-50/50">
-                <th className="sticky left-0 z-40 bg-slate-50 p-4 min-w-[140px] border-r border-slate-200 text-left font-black uppercase text-slate-400 text-[10px] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]">
-                  Kaynaklar
-                </th>
+              <tr className="bg-slate-50">
+                <th className="sticky left-0 z-40 bg-slate-100 p-6 min-w-[200px] border-r-2 border-slate-200 text-center font-black uppercase text-slate-900 text-[12px] tracking-widest shadow-md">Kaynaklar</th>
                 {days.map(day => {
-                  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                   const isToday = day.getTime() === today.getTime();
                   return (
-                    <th key={day.toISOString()} className={`p-2 border-r border-slate-100 min-w-[42px] text-center ${isToday ? 'bg-blue-600/10' : (isWeekend ? 'bg-slate-300' : '')}`}>
-                      <div className="text-[8px] font-black text-slate-400 uppercase leading-none">{day.toLocaleDateString('tr-TR', { weekday: 'short' }).charAt(0)}</div>
-                      <div className={`text-sm font-black mt-0.5 ${isToday ? 'text-blue-600' : 'text-slate-800'}`}>{day.getDate()}</div>
+                    <th key={day.toISOString()} className={`p-4 border-r border-slate-200 min-w-[70px] text-center ${isToday ? 'bg-indigo-600 text-white' : ''}`}>
+                      <div className={`text-[10px] font-black uppercase ${isToday ? 'text-indigo-100' : 'text-slate-400'}`}>{day.toLocaleDateString('tr-TR', { weekday: 'short' })}</div>
+                      <div className="text-xl font-black">{day.getDate()}</div>
                     </th>
                   );
                 })}
               </tr>
             </thead>
             <tbody>
-              {['F', 'M', 'S'].map(floor => {
-                const floorStyles = {
-                  F: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-                  M: 'bg-blue-50 text-blue-700 border-blue-100',
-                  S: 'bg-amber-50 text-amber-700 border-amber-100'
-                }[floor.toUpperCase()] || 'bg-slate-100 text-slate-500 border-slate-200';
-
-                return (
-                  <Fragment key={floor}>
-                    <tr className={`${floorStyles} text-[10px] font-black uppercase tracking-[0.3em]`}>
-                      <td className={`sticky left-0 z-30 ${floorStyles} backdrop-blur-md px-4 py-3 border-y shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)]`}>
-                        Floor {floor}
+              {['F', 'M', 'S'].map(floor => (
+                <Fragment key={floor}>
+                  <tr className="bg-slate-800 text-[11px] font-black uppercase tracking-[0.5em] text-white">
+                    <td className="sticky left-0 z-30 bg-slate-800 px-6 py-3 border-y border-slate-700 text-center shadow-md">Floor {floor}</td>
+                    <td colSpan={days.length} className="border-y border-slate-700 opacity-20 italic pl-4">InI Multi-Resource Management</td>
+                  </tr>
+                  {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
+                    <tr key={room.id} className="group/row border-b border-slate-100">
+                      <td className="sticky left-0 z-30 bg-white p-6 border-r-2 border-slate-200 group-hover/row:bg-slate-50 transition-all text-center">
+                        <div className="font-black text-slate-900 text-[15px] uppercase tracking-tighter">{room.name}</div>
+                        <div className="text-[10px] font-black text-indigo-600 mt-1 uppercase bg-indigo-50 rounded-full px-2 py-0.5 inline-block">Kapasite: {room.capacity}</div>
                       </td>
-                      <td colSpan={days.length} className="border-y opacity-50"></td>
-                    </tr>
-                    {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
-                      <tr key={room.id} className="border-b border-slate-50 group/row hover:bg-slate-50/50">
-<td className="sticky left-0 z-30 bg-white p-4 border-r border-slate-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] group-hover/row:bg-slate-50 transition-all">
-  <div className="flex flex-col items-center justify-center gap-2 text-center h-full">
-    {/* Oda İsmi - Tam Orta */}
-    <span className="font-black text-slate-900 text-[13px] uppercase tracking-tight group-hover/row:text-blue-600 transition-colors leading-tight">
-      {room.name}
-    </span>
+                      {days.map(day => {
+                        const dateStr = day.toISOString().split('T')[0];
+                        const dayBookings = getBookingsForRoomAndDay(room.id, day);
+                        const isShadow = getIsShadow(room.id, dateStr);
+                        return (
+                          <td 
+  key={day.toISOString()} 
+  onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
+  onDrop={(e) => handleDrop(e, room.id, dateStr)}
+  className={`p-1.5 border-r border-slate-100 h-36 min-w-[120px] relative transition-all group/cell
+    ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
+    ${isShadow ? 'bg-indigo-700 ring-4 ring-indigo-900 ring-inset scale-95 z-10' : ''}
+  `}
+>
+  {/* Kaydırma çubuğu gizlenmiş konteyner */}
+  <div 
+    className="flex flex-col gap-1 h-full overflow-y-auto" 
+    style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}
+  >
+    {/* Webkit için gizleme sınıfını (no-scrollbar) Tailwind config'e eklemediysen inline style en garantisi */}
+    <style>{`.no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
     
-    {/* Kapasite Badge - Altında ve Ortalı */}
-    <div className="flex items-center justify-center gap-1.5">
-      <div className="flex items-center h-5 px-2 rounded-full bg-slate-100 border border-slate-200 group-hover/row:bg-white transition-colors shadow-sm">
-        <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mr-1">CAP:</span>
-        <span className="text-[10px] font-black text-slate-800">{room.capacity}</span>
-      </div>
-
+    <div className="no-scrollbar flex flex-col gap-1 h-full overflow-y-auto">
+      {dayBookings.map(b => (
+        <div
+          key={b.id}
+          draggable
+          onDragStart={(e) => handleDragStart(e, b)}
+          onClick={() => { setEditingBooking(b); setEditForm({ title: b.title, start_date: b.start_time.split('T')[0], end_date: b.end_time.split('T')[0] }); }}
+          className="w-full p-2.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase cursor-grab active:cursor-grabbing hover:bg-indigo-600 transition-all shadow-md border border-white/10 shrink-0"
+        >
+          {b.title}
+        </div>
+      ))}
     </div>
   </div>
+
+  {!dayBookings.length && (
+    <button onClick={() => { setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' }); setIsNewBookingModalOpen(true); }} className="absolute inset-0 opacity-0 group-hover/cell:opacity-100 text-indigo-600 text-4xl font-light transition-all cursor-crosshair">+</button>
+  )}
 </td>
-                         
-                        {days.map(day => {
-                          const dateStr = day.toISOString().split('T')[0];
-                          const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                          const dayBookings = getBookingsForRoomAndDay(room.id, day);
-                          const isDragOver = dragOverCell?.roomId === room.id && dragOverCell?.date === dateStr;
-                          
-                          return (
-                            <td 
-                              key={day.toISOString()} 
-                              onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
-                              onDrop={(e) => handleDrop(e, room.id, dateStr)}
-                              className={`p-1 border-r border-slate-100 text-center h-28 min-w-[100px] relative transition-all group/cell
-                                ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}
-                                ${isDragOver ? 'ring-4 ring-blue-500 ring-inset scale-105 shadow-2xl z-20' : ''}
-                              `}
-                            >
-                              {dayBookings.length > 0 ? (
-                                <div className="flex flex-col gap-1.5 justify-start h-full overflow-y-auto no-scrollbar py-1">
-                                  {dayBookings.map(b => (
-                                    <div
-                                      key={b.id}
-                                      draggable
-                                      onDragStart={(e) => handleDragStart(e, b)}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingBooking(b);
-                                        setEditForm({ 
-                                          title: b.title, 
-                                          start_date: new Date(b.start_time).toISOString().split('T')[0], 
-                                          end_date: new Date(b.end_time).toISOString().split('T')[0]
-                                        });
-                                      }}
-                                      className="w-full px-2 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase cursor-move hover:bg-blue-600 transition-all truncate text-left border border-white/20 shadow-md"
-                                      title={b.title}
-                                    >
-                                      {b.title}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' });
-                                    setIsNewBookingModalOpen(true);
-                                  }}
-                                  className="w-full h-full opacity-0 group-hover/cell:opacity-100 text-blue-500 text-3xl font-light transition-opacity"
-                                >
-                                  +
-                                </button>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </Fragment>
-                );
-              })}
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL (Create/Edit) */}
+      {/* MODAL */}
       {(isNewBookingModalOpen || editingBooking) && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
-          <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in zoom-in-90 duration-300">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">{editingBooking ? 'GÜNCELLE' : 'YENİ KAYIT'}</h2>
-              {editingBooking && <button onClick={() => handleDelete(editingBooking.id)} className="text-red-500 font-black text-[10px] uppercase hover:underline">SİL</button>}
-            </div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[110] p-4">
+          <div className="bg-white rounded-[3rem] p-12 w-full max-w-lg shadow-2xl border-4 border-slate-900">
+            <h2 className="text-4xl font-black text-slate-900 mb-8 tracking-tighter uppercase italic underline decoration-indigo-500">{editingBooking ? 'Güncelle' : 'Yeni Kayıt'}</h2>
             <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">İsim / Başlık</label>
-                <FastInput 
-                  value={editingBooking ? editForm.title : newBookingData.title} 
-                  onChange={(val) => editingBooking ? setEditForm({...editForm, title: val}) : setNewBookingData({...newBookingData, title: val})}
-                  placeholder="İSİM GİRİNİZ..." 
-                />
-              </div>
+              <FastInput value={editingBooking ? editForm.title : newBookingData.title} onChange={(val) => editingBooking ? setEditForm({...editForm, title: val}) : setNewBookingData({...newBookingData, title: val})} placeholder="KAYIT BAŞLIĞI..." />
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Başlangıç</label>
-                  <input type="date" value={editingBooking ? editForm.start_date : newBookingData.startDate} onChange={(e) => editingBooking ? setEditForm({...editForm, start_date: e.target.value}) : setNewBookingData({...newBookingData, startDate: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-center" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Bitiş</label>
-                  <input type="date" value={editingBooking ? editForm.end_date : newBookingData.endDate} min={editingBooking ? editForm.start_date : newBookingData.startDate} onChange={(e) => editingBooking ? setEditForm({...editForm, end_date: e.target.value}) : setNewBookingData({...newBookingData, endDate: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-center" />
-                </div>
+      <div className="space-y-2">
+  <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Giriş</label>
+  <input 
+    type="date" 
+    value={editForm.start_date}
+    onChange={(e) => handleStartDateChange(e.target.value)} // Yeni fonksiyon
+    className="bg-slate-100 p-5 rounded-2xl font-black w-full" 
+  />
+</div>
+
+<div className="space-y-2">
+  <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Çıkış</label>
+  <input 
+    type="date" 
+    value={editForm.end_date}
+    onChange={(e) => {
+      // Eğer kullanıcı manuel olarak çıkış tarihini değiştirirse, süreyi (duration) yeniden hesapla
+      const newEnd = new Date(e.target.value);
+      const start = new Date(editForm.start_date);
+      const diff = Math.ceil((newEnd.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      setEditForm({...editForm, end_date: e.target.value, duration: diff});
+    }}
+    className="bg-slate-100 p-5 rounded-2xl font-black w-full" 
+  />
+</div>
               </div>
             </div>
             <div className="flex gap-4 mt-10">
-              <button onClick={editingBooking ? handleUpdate : handleCreate} className="flex-1 bg-blue-600 text-white py-5 rounded-2xl font-black uppercase shadow-lg hover:bg-blue-700 active:scale-95 transition-all">ONAYLA</button>
-              <button onClick={() => { setIsNewBookingModalOpen(false); setEditingBooking(null); }} className="flex-1 bg-slate-100 text-slate-500 py-5 rounded-2xl font-black uppercase hover:bg-slate-200 transition-all">İPTAL</button>
+              <button onClick={editingBooking ? handleUpdate : handleCreate} className="flex-1 bg-indigo-600 text-white py-6 rounded-2xl font-black uppercase hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200">Onayla</button>
+              {editingBooking && <button onClick={() => handleDelete(editingBooking.id)} className="px-10 bg-rose-600 text-white rounded-2xl font-black uppercase hover:bg-rose-700 transition-all">Sil</button>}
+              <button onClick={() => { setIsNewBookingModalOpen(false); setEditingBooking(null); }} className="px-8 bg-slate-200 text-slate-600 rounded-2xl font-black uppercase hover:bg-slate-300 transition-all">Kapat</button>
             </div>
           </div>
         </div>
