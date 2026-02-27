@@ -43,9 +43,7 @@ export function Calendar() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // --- YENİ: GÖRÜNÜM PENCERESİ STATE'İ ---
-  const [viewWindow, setViewWindow] = useState<7 | 15 | 30>(15);
+  const [viewWindow, setViewWindow] = useState<7 | 15 >(15);
   
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -53,17 +51,13 @@ export function Calendar() {
     return d;
   });
 
-  const [selectedDetail, setSelectedDetail] = useState<{ room: Room, day: Date, bookings: Booking[] } | null>(null);
   const [isNewBookingModalOpen, setIsNewBookingModalOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
-
   const [newBookingData, setNewBookingData] = useState({ roomId: 0, startDate: '', endDate: '', title: '' });
   const [editForm, setEditForm] = useState({ title: '', start_date: '', end_date: '' });
-
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
 
-  // Gün hesaplamayı dinamik viewWindow'a bağladık
   const days = getDaysForPeriod(startDate, viewWindow);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -81,17 +75,16 @@ export function Calendar() {
 
   const moveNext = () => {
     const d = new Date(startDate);
-    d.setDate(d.getDate() + viewWindow); // Seçili pencere kadar ileri
+    d.setDate(d.getDate() + viewWindow);
     setStartDate(d);
   };
 
   const movePrev = () => {
     const d = new Date(startDate);
-    d.setDate(d.getDate() - viewWindow); // Seçili pencere kadar geri
+    d.setDate(d.getDate() - viewWindow);
     setStartDate(d);
   };
 
-  // --- CRUD ---
   const handleCreate = async () => {
     if (!newBookingData.title) { alert("İsim girmelisiniz!"); return; }
     try {
@@ -130,7 +123,7 @@ export function Calendar() {
     } catch (err) { alert("Silme hatası."); }
   };
 
-  // Drag & Drop
+  // --- DRAG & DROP (Süreyi Koruyan Versiyon) ---
   const handleDragStart = (e: React.DragEvent, booking: Booking) => {
     setDraggedBooking(booking);
     e.dataTransfer.effectAllowed = 'move';
@@ -144,14 +137,32 @@ export function Calendar() {
   const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
     e.preventDefault();
     if (!draggedBooking) return;
+
+    const start = new Date(draggedBooking.start_time);
+    const end = new Date(draggedBooking.end_time);
+    const durationMs = end.getTime() - start.getTime();
+
+    const newStart = new Date(`${targetDate}T${start.toTimeString().split(' ')[0]}`);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+
+    const formatDateTime = (date: Date) => {
+      return date.getFullYear() + '-' + 
+             String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+             String(date.getDate()).padStart(2, '0') + 'T' + 
+             String(date.getHours()).padStart(2, '0') + ':' + 
+             String(date.getMinutes()).padStart(2, '0') + ':00';
+    };
+
     try {
       await updateBooking(draggedBooking.id, {
         room_id: targetRoomId,
         title: draggedBooking.title,
-        start_time: `${targetDate}T09:00:00`,
-        end_time: `${targetDate}T17:00:00`,
+        start_time: formatDateTime(newStart),
+        end_time: formatDateTime(newEnd),
       });
       await fetchData();
+    } catch (err: any) {
+      alert("Taşıma işlemi başarısız: " + (err.response?.data?.message || "Oda dolu."));
     } finally {
       setDraggedBooking(null);
       setDragOverCell(null);
@@ -177,16 +188,14 @@ export function Calendar() {
       <div className="max-w-[100vw] mx-auto mb-6 bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
         <div className="flex flex-col lg:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-4">
-            <div className="h-14 w-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-xl">M</div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Matrix v2</h1>
+              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">InI Booking v2</h1>
               <p className="text-blue-600 text-[10px] font-black uppercase tracking-widest mt-1">
                 {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} - {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
               </p>
             </div>
           </div>
 
-          {/* VIEW SELECTOR & NAV */}
           <div className="flex flex-wrap justify-center items-center gap-4">
             <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
               {[7, 15].map((v) => (
@@ -248,9 +257,24 @@ export function Calendar() {
                     </tr>
                     {rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
                       <tr key={room.id} className="border-b border-slate-50 group/row hover:bg-slate-50/50">
-                        <td className="sticky left-0 z-30 bg-white p-4 border-r border-slate-200 font-black text-slate-700 text-[11px] uppercase shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] group-hover/row:text-blue-600 transition-colors">
-                          {room.name}
-                        </td>
+<td className="sticky left-0 z-30 bg-white p-4 border-r border-slate-200 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.1)] group-hover/row:bg-slate-50 transition-all">
+  <div className="flex flex-col items-center justify-center gap-2 text-center h-full">
+    {/* Oda İsmi - Tam Orta */}
+    <span className="font-black text-slate-900 text-[13px] uppercase tracking-tight group-hover/row:text-blue-600 transition-colors leading-tight">
+      {room.name}
+    </span>
+    
+    {/* Kapasite Badge - Altında ve Ortalı */}
+    <div className="flex items-center justify-center gap-1.5">
+      <div className="flex items-center h-5 px-2 rounded-full bg-slate-100 border border-slate-200 group-hover/row:bg-white transition-colors shadow-sm">
+        <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mr-1">CAP:</span>
+        <span className="text-[10px] font-black text-slate-800">{room.capacity}</span>
+      </div>
+
+    </div>
+  </div>
+</td>
+                         
                         {days.map(day => {
                           const dateStr = day.toISOString().split('T')[0];
                           const isWeekend = day.getDay() === 0 || day.getDay() === 6;
@@ -258,52 +282,50 @@ export function Calendar() {
                           const isDragOver = dragOverCell?.roomId === room.id && dragOverCell?.date === dateStr;
                           
                           return (
-                         // ... Tablo içindeki <td> kısmını bulup bununla değiştirin:
-
-<td 
-  key={day.toISOString()} 
-  onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
-  onDrop={(e) => handleDrop(e, room.id, dateStr)}
-  className={`p-1 border-r border-slate-100 text-center h-24 min-w-[80px] relative transition-all group/cell
-    ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}
-    ${isDragOver ? 'ring-4 ring-blue-500 ring-inset scale-105' : ''}
-  `}
->
-  {dayBookings.length > 0 ? (
-    <div className="flex flex-col gap-1 justify-start h-full overflow-y-auto no-scrollbar">
-      {dayBookings.map(b => (
-        <div
-          key={b.id}
-          draggable
-          onDragStart={(e) => handleDragStart(e, b)}
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditingBooking(b);
-            setEditForm({ 
-              title: b.title, 
-              start_date: new Date(b.start_time).toISOString().split('T')[0], 
-              end_date: new Date(b.end_time).toISOString().split('T')[0]
-            });
-          }}
-          className="w-full block px-2 py-1.5 bg-slate-900 text-white rounded-lg text-[9px] font-bold uppercase cursor-move hover:bg-blue-600 transition-all truncate text-left border border-white/10 shadow-sm"
-          title={b.title}
-        >
-          {b.title}
-        </div>
-      ))}
-    </div>
-  ) : (
-    <button
-      onClick={() => {
-        setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' });
-        setIsNewBookingModalOpen(true);
-      }}
-      className="w-full h-full opacity-0 group-hover/cell:opacity-100 text-blue-500 text-2xl font-light transition-opacity"
-    >
-      +
-    </button>
-  )}
-</td>
+                            <td 
+                              key={day.toISOString()} 
+                              onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
+                              onDrop={(e) => handleDrop(e, room.id, dateStr)}
+                              className={`p-1 border-r border-slate-100 text-center h-28 min-w-[100px] relative transition-all group/cell
+                                ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}
+                                ${isDragOver ? 'ring-4 ring-blue-500 ring-inset scale-105 shadow-2xl z-20' : ''}
+                              `}
+                            >
+                              {dayBookings.length > 0 ? (
+                                <div className="flex flex-col gap-1.5 justify-start h-full overflow-y-auto no-scrollbar py-1">
+                                  {dayBookings.map(b => (
+                                    <div
+                                      key={b.id}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(e, b)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingBooking(b);
+                                        setEditForm({ 
+                                          title: b.title, 
+                                          start_date: new Date(b.start_time).toISOString().split('T')[0], 
+                                          end_date: new Date(b.end_time).toISOString().split('T')[0]
+                                        });
+                                      }}
+                                      className="w-full px-2 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase cursor-move hover:bg-blue-600 transition-all truncate text-left border border-white/20 shadow-md"
+                                      title={b.title}
+                                    >
+                                      {b.title}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setNewBookingData({ roomId: room.id, startDate: dateStr, endDate: dateStr, title: '' });
+                                    setIsNewBookingModalOpen(true);
+                                  }}
+                                  className="w-full h-full opacity-0 group-hover/cell:opacity-100 text-blue-500 text-3xl font-light transition-opacity"
+                                >
+                                  +
+                                </button>
+                              )}
+                            </td>
                           );
                         })}
                       </tr>
