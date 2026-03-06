@@ -8,11 +8,13 @@ use Illuminate\Http\Request;
 
 class RoomController extends Controller
 {
-    public function index()
+    
+public function index()
     {
         return response()->json([
             'success' => true,
-            'data' => Room::all()
+            // Sadece Room::all() yerine Room::with('features')->get() yazıyoruz
+            'data' => Room::with('features')->get() 
         ]);
     }
 
@@ -178,7 +180,11 @@ public function availableRanges(Request $request)
         ], 400);
     }
 
-    $rooms = Room::all();
+
+    $rooms = Room::with('features')->get();
+
+    return response()->json($rooms);
+    
     $availableRanges = [];
 
     foreach ($rooms as $room) {

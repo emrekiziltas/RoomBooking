@@ -11,6 +11,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(LookupTypesSeeder::class);
+
         // 1. Önce odaları oluştur
         $this->call(RoomSeeder::class);
 

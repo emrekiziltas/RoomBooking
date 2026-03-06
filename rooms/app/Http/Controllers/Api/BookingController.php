@@ -8,6 +8,7 @@ use App\Http\Resources\BookingResource;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class BookingController extends Controller
 {
@@ -166,6 +167,16 @@ class BookingController extends Controller
 
     public function getAvailableRooms(Request $request)
     {
+        dd("BURADAYIM! Çalışan dosya: " . __FILE__);
+        // Loglama Başlat
+    Log::info('--- GetAvailableRooms Sorgusu Başlatıldı ---', [
+        'ip_adresi' => $request->ip(),
+        'url' => $request->fullUrl(),
+        'gelen_tarih' => $request->query('date'),
+        'user_agent' => $request->userAgent(), // Hangi tarayıcıdan/cihazdan geldiği
+        'istek_zamani' => now()->toDateTimeString()
+    ]);
+
         $request->validate([
             'date' => 'required|date',
         ]);

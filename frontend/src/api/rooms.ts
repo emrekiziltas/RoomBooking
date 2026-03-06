@@ -24,7 +24,7 @@ export const getAvailableRanges = async (startDate: string, days: number = 5) =>
   return response.data;
 };
 
-export const updateRoom = async (id: number, data: { capacity?: number; features?: { blackboard?: boolean } }) => {
-  const response = await api.patch(`/rooms/${id}`, data);
+export const updateRoom = async (id: number, data: { capacity?: number; features?: any[] }) => {
+  const response = await api.put(`/rooms/${id}`, data);
   return response.data;
 };

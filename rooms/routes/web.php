@@ -3,5 +3,7 @@
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+     $count = App\Models\LookupValue::count();
+    return "LookupValue count: $count";
+  //  return view('welcome');
 });

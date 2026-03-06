@@ -1,10 +1,14 @@
+export interface Feature {
+  id: number | string;
+  key: string;
+  label: string;
+}
+
 export interface Room {
   id: number;
   name: string;
   capacity: number;
-  features?: {
-    blackboard?: boolean;
-  };
+  features?: Feature[]
   booked_slots?: number;
   available_capacity?: number;
   occupancy_rate?: number; // Yeni

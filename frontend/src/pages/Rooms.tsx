@@ -13,10 +13,13 @@ export function Rooms() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState<{ room: Room } | null>(null);
-  const [formData, setFormData] = useState<{capacity: number, features: Record<string, boolean>}>({ 
+  
+  // DİKKAT: features artık bir obje değil, bir Dizi (Array) oldu!
+  const [formData, setFormData] = useState<{capacity: number, features: any[]}>({ 
     capacity: 1, 
-    features: {} 
+    features: [] 
   });
+  
   const [saving, setSaving] = useState(false);
   const [newFeatureName, setNewFeatureName] = useState('');
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
@@ -35,6 +38,7 @@ export function Rooms() {
     setLoading(true);
     try {
       const response = await getRooms();
+      console.log("Backend'den Gelen Odalar:", response.data);
       setRooms(response.data || []);
     } catch (error) { console.error('Error:', error); }
     finally { setLoading(false); }
@@ -42,30 +46,35 @@ export function Rooms() {
 
   const openEditModal = (room: Room) => {
     setEditModal({ room });
-    setFormData({ capacity: room.capacity, features: room.features || {} });
+    // Odanın özelliklerini dizi olarak forma yüklüyoruz
+    setFormData({ capacity: room.capacity, features: room.features || [] });
   };
 
   const addNewFeature = () => {
     if (!newFeatureName.trim()) return;
-    const key = newFeatureName.trim().toLowerCase().replace(/\s+/g, '_');
+    const label = newFeatureName.trim();
+    const key = label.toLowerCase().replace(/\s+/g, '_');
+    
+    // Zaten ekliyse tekrar ekleme
+    if (formData.features.some(f => f.key === key)) {
+      setNewFeatureName('');
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
-      features: { ...prev.features, [key]: true }
+      // Yeni eklenen özelliğe geçici bir ID veriyoruz (Backend halledecek)
+      features: [...prev.features, { id: 'new_' + Date.now(), key, label }]
     }));
     setNewFeatureName('');
   };
 
-  const toggleFeature = (key: string, isChecked: boolean) => {
-    const updatedFeatures = { ...formData.features };
-    if (isChecked) { updatedFeatures[key] = true; } 
-    else { delete updatedFeatures[key]; }
-    setFormData({ ...formData, features: updatedFeatures });
-  };
-
-  const deleteFeature = (key: string) => {
-    const updatedFeatures = { ...formData.features };
-    delete updatedFeatures[key];
-    setFormData({ ...formData, features: updatedFeatures });
+  const deleteFeature = (identifier: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      // Hem ID'ye hem Key'e göre silme kontrolü
+      features: prev.features.filter(f => f.key !== identifier && f.id !== identifier)
+    }));
   };
 
   const handleUpdate = async () => {
@@ -74,7 +83,7 @@ export function Rooms() {
     try {
       await updateRoom(editModal.room.id, {
         capacity: formData.capacity,
-        features: formData.features 
+        features: formData.features // Artık backend'e dizi gönderiyoruz
       });
       await fetchRooms();
       setToast({ message: 'SYSTEM UPDATED ✓', type: 'success' });
@@ -102,7 +111,6 @@ export function Rooms() {
 
   return (
     <div className="min-h-screen bg-brand-surface px-4 pt-2 pb-12 font-brand">
-      {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-8 right-8 z-[60] animate-in slide-in-from-top-4 duration-300 ${
           toast.type === 'success' ? 'bg-brand-success' : 'bg-brand-danger'
@@ -111,7 +119,6 @@ export function Rooms() {
         </div>
       )}
 
-      {/* HEADER */}
       <div className="max-w-7xl mx-auto mb-8 border-b-2 border-brand-surface pb-1">
         <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic leading-none">
           Resource <span className="text-brand-primary">Management</span>
@@ -119,7 +126,6 @@ export function Rooms() {
         <p className="text-brand-muted font-black uppercase text-[9px] tracking-[0.3em] mt-0.5">SYSTEM CONTROL PANEL & CAPACITY</p>
       </div>
 
-      {/* ODA LİSTESİ */}
       <div className="max-w-7xl mx-auto">
         {['F', 'M', 'S'].map((prefix) => {
           const floorRooms = groupedRooms[prefix] || [];
@@ -145,16 +151,15 @@ export function Rooms() {
                     </div>
 
                     <div className="space-y-1.5 flex-1">
-                      {room.features && Object.entries(room.features).filter(([_, val]) => val).length > 0 ? (
-                        Object.entries(room.features).map(([key, val]) => (
-                          val && (
-                            <div key={key} className="flex items-center gap-2">
+                      {/* DİKKAT: Artık Object.entries yok, doğrudan diziyi map'liyoruz */}
+                      {room.features && room.features.length > 0 ? (
+                        room.features.map((feature: any) => (
+                            <div key={feature.id || feature.key} className="flex items-center gap-2">
                               <div className={`w-1 h-1 rounded-full bg-brand-muted opacity-40`} />
                               <span className="text-[9px] font-black text-brand-muted uppercase tracking-tight truncate">
-                                {key.replace('_', ' ')}
+                                {feature.label || feature.key.replace('_', ' ')}
                               </span>
                             </div>
-                          )
                         ))
                       ) : (
                         <span className="text-[8px] font-black text-gray-300 uppercase italic">Basic Config</span>
@@ -177,7 +182,6 @@ export function Rooms() {
         })}
       </div>
 
-      {/* MODAL */}
       {editModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
           <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setEditModal(null)} />
@@ -213,15 +217,17 @@ export function Rooms() {
               </div>
 
               <div className="bg-brand-surface/30 rounded-ini p-4 border border-brand-surface">
-                <label className="text-[9px] font-black text-brand-secondary uppercase mb-4 block tracking-widest opacity-70">Inventory ({Object.keys(formData.features).length})</label>
+                <label className="text-[9px] font-black text-brand-secondary uppercase mb-4 block tracking-widest opacity-70">Inventory ({formData.features.length})</label>
                 <div className="max-h-[220px] overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                  {Object.entries(formData.features).length > 0 ? (
-                    Object.entries(formData.features).map(([key, val]) => (
-                      <div key={key} className="flex items-center justify-between p-3 bg-white rounded-ini border border-brand-surface group">
-                        <span className="text-[9px] font-black text-brand-secondary uppercase tracking-tight">{key.replace('_', ' ')}</span>
+                  {formData.features.length > 0 ? (
+                    formData.features.map((feature: any) => (
+                      <div key={feature.id || feature.key} className="flex items-center justify-between p-3 bg-white rounded-ini border border-brand-surface group">
+                        <span className="text-[9px] font-black text-brand-secondary uppercase tracking-tight">
+                          {feature.label || feature.key.replace('_', ' ')}
+                        </span>
                         <div className="flex items-center gap-2">
-                          <input type="checkbox" checked={!!val} onChange={(e) => toggleFeature(key, e.target.checked)} className="w-4 h-4 rounded border-brand-surface text-brand-primary focus:ring-0 cursor-pointer" />
-                          <button onClick={() => deleteFeature(key)} className="p-1 text-brand-danger opacity-0 group-hover:opacity-100 transition-all">
+                          {/* Sadece silme butonu bıraktık, zaten listedeyse var demektir */}
+                          <button onClick={() => deleteFeature(feature.id || feature.key)} className="p-1 text-brand-danger opacity-0 group-hover:opacity-100 transition-all">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
                         </div>
@@ -242,14 +248,6 @@ export function Rooms() {
           </div>
         </div>
       )}
-
-      {/* CUSTOM SCROLLBAR CSS RE-IMPLEMENTED FOR BRAND */}
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-      `}</style>
     </div>
   );
 }
