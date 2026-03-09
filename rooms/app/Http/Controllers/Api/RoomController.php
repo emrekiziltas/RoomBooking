@@ -22,18 +22,51 @@ public function update(Request $request, $id)
 {
     $room = Room::findOrFail($id);
     
-    $validated = $request->validate([
-        'name' => 'sometimes|string|max:255',
+    // Validasyon: features içindeki her bir elemanın yapısını kontrol edelim
+    $request->validate([
         'capacity' => 'sometimes|integer|min:1|max:4',
-        'features' => 'sometimes|array', // Ana objenin array/json olduğunu doğrula
+        'features' => 'sometimes|array',
     ]);
 
-    // $validated['features'] artık içindeki tüm alt anahtarlarla (printer, wifi vb.) birlikte gelir.
-    $room->update($validated);
+    // 1. Kapasite gibi temel alanları güncelle
+    $room->update($request->only(['capacity']));
+
+    if ($request->has('features')) {
+        $featureIds = [];
+
+        foreach ($request->features as $feature) {
+            // Yeni mi eski mi kontrolü (Frontend'den gelen 'id' değerine bakıyoruz)
+            $isNew = !isset($feature['id']) || (is_string($feature['id']) && str_starts_with($feature['id'], 'new_'));
+
+            if ($isNew) {
+                // EĞER YENİ İSE: LookupValue tablosuna KAYDET
+                // Burada 'key' benzersiz olduğu için firstOrCreate kullanmak en güvenlisidir.
+                $newFeature = \App\Models\LookupValue::firstOrCreate(
+                    [
+                        'key' => $feature['key'], 
+                        'type_id' => 3 // Sizin sisteminizdeki 'Özellik' tipi
+                    ],
+                    [
+                        'label' => $feature['label'],
+                        'is_active' => true,
+                        'sort_order' => 0
+                    ]
+                );
+                $featureIds[] = $newFeature->id;
+            } else {
+                // EĞER ESKİ İSE: Mevcut ID'yi kullan
+                $featureIds[] = $feature['id'];
+            }
+        }
+
+        // 2. Pivot Tabloyu (room_features) Senkronize Et
+        // Bu işlem room_features tablosuna yeni kayıtları atar, listede olmayanları siler.
+        $room->features()->sync($featureIds);
+    }
 
     return response()->json([
         'success' => true,
-        'data' => $room->fresh()
+        'data' => $room->load('features') // Güncel listeyle beraber dön
     ]);
 }
     public function show($id)

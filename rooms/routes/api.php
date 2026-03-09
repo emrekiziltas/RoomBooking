@@ -9,8 +9,9 @@ use Illuminate\Support\Facades\Route;
 // --- 🔓 Herkese Açık Route'lar ---
 Route::post('auth/register', [AuthController::class, 'register']);
 Route::post('auth/login', [AuthController::class, 'login']);
-    Route::get('navigation', [LookupController::class, 'getNavigation']);
 
+
+    
 // --- 🔒 Giriş Yapmış Kullanıcılar (Sanctum) ---
 Route::middleware('auth:sanctum')->group(function () {
     
@@ -19,6 +20,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dinamik Menü ve Kat Bilgileri (Yeni Lookup Sistemi)
 
     Route::get('floors', [LookupController::class, 'getFloors']);
+    Route::get('lookup-values/type/{typeId}', [LookupController::class, 'getByType']);
+    Route::get('navigation', [LookupController::class, 'getNavigation']);
+    Route::get('settings', [LookupController::class, 'getSystemSettings']); 
 
     // Oda İşlemleri
     Route::get('rooms/available', [RoomController::class, 'available']);
