@@ -13,82 +13,104 @@ export function Navbar() {
   useEffect(() => {
     const fetchNav = async () => {
       try {
-        const response = await api.get('/navigation'); 
+        const response = await api.get('/navigation');
         setNavItems(response.data);
       } catch (error) {
-        console.error("Navigasyon hatası:", error);
       }
     };
     fetchNav();
   }, []);
 
   async function handleLogout() {
-    try { await logout(); } finally {
+    try {
+      await logout();
+    } finally {
       logoutStore();
       navigate('/login');
     }
   }
 
-  // --- ROL TABANLI FİLTRELEME MANTIĞI ---
+  // Menüleri filtreleme mantığı
   const filteredNavItems = navItems.filter((item) => {
     try {
       const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
-      
-      // Eğer metadata içinde requiresAdmin: true varsa ve kullanıcı admin değilse, bu linki gizle
-      if (meta?.requiresAdmin === true && user?.role !== 'admin') {
+      const isAdminRequired = meta?.requiresAdmin === true || meta?.role === 'admin';
+
+      if (!user) {
+        return !isAdminRequired;
+      }
+
+      // Admin gerekiyorsa ama kullanıcı admin değilse gizle
+      if (isAdminRequired && user.role !== 'admin') {
         return false;
       }
+
       return true;
     } catch (e) {
-      // Parse hatası olsa bile güvenli tarafta kalıp linki gösteriyoruz
-      return true; 
+      return true; // JSON hatası varsa her ihtimale karşı göster
     }
   });
 
-  const getLinkStyles = (item: any) => ({ isActive }: { isActive: boolean }) =>
-    `text-[11px] font-black uppercase tracking-widest transition-all border-b-2 py-1 ${
-      isActive 
-        ? (item.active_bg_class || 'text-indigo-600 border-indigo-600') 
-        : (item.bg_color_class || 'text-slate-400 border-transparent hover:text-slate-900 hover:border-slate-300')
-    }`;
+  // Link stillerini yöneten yardımcı fonksiyon
+  const getLinkStyles = (item: any) => {
+    // DB'den gelen metadata içindeki renkleri kullanabilirsin
+    let meta: any = {};
+    try {
+      meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+    } catch (e) {}
+
+    const base = "px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ";
+    const active = meta?.active_bg_class || "text-brand-primary bg-brand-primary/10";
+    const inactive = meta?.bg_color_class || "text-slate-400 hover:text-slate-900";
+
+    return ({ isActive }: { isActive: boolean }) => 
+      base + (isActive ? active : inactive);
+  };
 
   return (
     <nav className="bg-white shadow-sm border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-[100]">
       <div className="flex items-center gap-8">
         <div className="mr-4">
-           <span className="font-black italic text-xl tracking-tighter uppercase">InI </span>
+          <span className="font-black italic text-xl tracking-tighter uppercase">InI </span>
         </div>
 
-        <div className="flex gap-6">
-          {filteredNavItems.length > 0 ? filteredNavItems.map((item) => {
-            let path = '#';
-            try {
-              const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
-              path = meta?.path || '#';
-            } catch (e) { console.error("Metadata parse hatası", e); }
+        <div className="flex gap-2">
+          {navItems.length > 0 ? (
+            filteredNavItems.map((item) => {
+              let path = '#';
+              try {
+                const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+                path = meta?.path || '#';
+              } catch (e) {}
 
-            return (
-              <NavLink key={item.id} to={path} className={getLinkStyles(item)}>
-                {item.label}
-              </NavLink>
-            );
-          }) : <span className="text-xs text-slate-300 animate-pulse">Loading menu...</span>}
+              return (
+                <NavLink key={item.id} to={path} className={getLinkStyles(item)}>
+                  {item.label}
+                </NavLink>
+              );
+            })
+          ) : (
+            <span className="text-xs text-slate-300 animate-pulse uppercase font-bold">Loading system menu...</span>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-6">
-        {/* Admin olduğunu belli eden küçük bir badge (İsteğe bağlı) */}
         {user?.role === 'admin' && (
-          <span className="bg-brand-primary/10 text-brand-primary text-[8px] font-black px-2 py-1 rounded-md uppercase border border-brand-primary/20 tracking-tighter">
+          <span className="bg-indigo-100 text-indigo-700 text-[9px] font-black px-2 py-1 rounded border border-indigo-200 uppercase tracking-tighter">
             System Admin
           </span>
         )}
 
         <div className="text-right hidden md:block">
           <p className="text-[10px] font-black text-slate-400 uppercase leading-none">Welcome</p>
-          <p className="text-sm font-black text-slate-900 uppercase">{user?.name}</p>
+          <p className="text-sm font-black text-slate-900 uppercase">{user?.name || 'User'}</p>
         </div>
-        <button onClick={handleLogout} className="bg-slate-900 text-white px-5 py-2 rounded-xl hover:bg-rose-600 transition-all text-[11px] font-black uppercase tracking-widest shadow-lg shadow-slate-200">
+        
+        <button 
+          onClick={handleLogout} 
+          className="bg-slate-900 text-white px-5 py-2 rounded-xl hover:bg-rose-600 transition-all text-[11px] font-black uppercase tracking-widest shadow-lg shadow-slate-200"
+        >
           Logout
         </button>
       </div>
