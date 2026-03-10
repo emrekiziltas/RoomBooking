@@ -3,65 +3,97 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\LookupType;
 use App\Models\LookupValue;
 use Illuminate\Http\Request;
 
 class LookupController extends Controller
 {
-    /**
-     * Navbar menülerini döner.
-     */
+    // Settings.tsx'in GET isteği attığı metod (Az önce eksik olan buydu)
+    public function index() 
+    {
+        return response()->json([
+            'success' => true,
+            'data' => LookupValue::all()
+        ]);
+    }
+
     public function getNavigation()
     {
-        // 'nav_menu' tipindeki aktif değerleri çekiyoruz
         $navigation = LookupValue::whereHas('type', function ($query) {
             $query->where('key', 'nav_menu');
-        })
-        ->where('is_active', true)
-        ->orderBy('sort_order')
-        ->get();
+        })->where('is_active', true)->orderBy('sort_order')->get();
 
         return response()->json($navigation);
     }
 
-    /**
-     * Kat bilgilerini (Floors) döner.
-     */
     public function getFloors()
     {
         $floors = LookupValue::whereHas('type', function ($query) {
             $query->where('key', 'floor');
-        })
-        ->where('is_active', true)
-        ->orderBy('sort_order')
-        ->get();
+        })->where('is_active', true)->orderBy('sort_order')->get();
 
         return response()->json($floors);
     }
-public function getSystemSettings()
+public function update(Request $request, $id)
 {
-    $type = \App\Models\LookupType::where('key', 'system_settings')->first();
-    
-    if (!$type) return response()->json(['success' => false], 404);
+    try {
+        // 1. Kaydı bul (Eğer ID yanlışsa direkt 404 döner)
+        $setting = \App\Models\LookupValue::findOrFail($id);
 
-    // Bu tipe ait ne kadar ayar varsa (Kapasite, Logo, Saat vb.) hepsini getir
-    $settings = \App\Models\LookupValue::where('type_id', $type->id)
-                ->where('is_active', 1)
-                ->get(['key', 'metadata', 'label']);
+        // 2. Gelen verileri tek tek ata (Zırhlı Yöntem)
+        if ($request->has('label')) {
+            $setting->label = $request->input('label');
+        }
+        
+        if ($request->has('key')) {
+            $setting->key = $request->input('key');
+        }
 
-    return response()->json([
-        'success' => true,
-        'data' => $settings
-    ]);
+        if ($request->has('metadata')) {
+            // Metadata sütunu modelde 'array' veya 'json' olarak cast edilmiş olmalı
+            $setting->metadata = $request->input('metadata');
+        }
+
+        // 3. Veritabanına kaydet
+        $setting->save();
+
+        // 4. Başarılı yanıt dön
+        return response()->json([
+            'success' => true,
+            'message' => 'Ayarlar başarıyla güncellendi.',
+            'data'    => $setting->fresh() // Güncel haliyle geri gönder
+        ]);
+
+    } catch (\Exception $e) {
+        // HATA VARSA: 500 hatasının nedenini JSON olarak döndür ki React konsolunda görelim
+        return response()->json([
+            'success' => false,
+            'error'   => $e->getMessage(),
+            'trace'   => $e->getTraceAsString()
+        ], 500);
+    }
 }
     public function getByType($typeId)
-{
-    // type_id'si gönderilen değere (bizim durumumuzda 3) eşit olanları getir
-    $values = \App\Models\LookupValue::where('type_id', $typeId)
-                ->select('id', 'key', 'label', 'type_id')
-                ->get();
+    {
+        $values = LookupValue::where('type_id', $typeId)
+                    ->select('id', 'key', 'label', 'type_id', 'metadata')
+                    ->get();
+        return response()->json($values);
+    }
 
-    return response()->json($values);
-}
+    public function updateSetting(Request $request, $id)
+    {
+        $setting = LookupValue::findOrFail($id);
+
+        $updated = $setting->update([
+            'label'    => $request->input('label'),
+            'key'      => $request->input('key'),
+            'metadata' => $request->input('metadata'),
+        ]);
+
+        return response()->json([
+            'success' => $updated,
+            'data'    => $setting->fresh()
+        ]);
+    }
 }

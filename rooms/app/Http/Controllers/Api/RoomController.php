@@ -22,11 +22,14 @@ public function update(Request $request, $id)
 {
     $room = Room::findOrFail($id);
     
-    // Validasyon: features içindeki her bir elemanın yapısını kontrol edelim
-    $request->validate([
-        'capacity' => 'sometimes|integer|min:1|max:4',
-        'features' => 'sometimes|array',
-    ]);
+$maxCapacitySetting = \App\Models\LookupValue::where('key', 'max_room_capacity')->first();
+// Eğer ayar bulunamazsa fallback olarak 4 kullan
+$maxVal = $maxCapacitySetting ? (int)$maxCapacitySetting->metadata['value'] : 4;
+
+$request->validate([
+    'capacity' => "sometimes|integer|min:1|max:$maxVal", // Dinamik max değer
+    'features' => 'sometimes|array',
+]);
 
     // 1. Kapasite gibi temel alanları güncelle
     $room->update($request->only(['capacity']));

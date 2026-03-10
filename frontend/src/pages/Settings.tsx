@@ -1,74 +1,134 @@
-import { useEffect, useState } from 'react';
-import { getLookupValues, updateLookupValue } from '../api/lookups';
+import { useEffect, useState } from "react";
+import api from "../api/axios";
+
+interface SettingItem {
+  id: number;
+  label: string;
+  key: string;
+  metadata: any;
+  type_id?: number;
+}
 
 export function Settings() {
-  const [lookups, setLookups] = useState<any[]>([]);
+  const [settings, setSettings] = useState<SettingItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchSettings = async () => {
+    setLoading(true);
     try {
-      const res = await getLookupValues();
-      setLookups(res.data);
+      const res = await api.get("/settings");
+      const data = res.data.success ? res.data.data : res.data;
+      if (Array.isArray(data)) {
+        setSettings(data);
+      }
     } catch (err) {
-      console.error("Lookup yükleme hatası");
+      console.error("Ayarlar yüklenirken hata oluştu:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return <div className="p-10 font-black animate-pulse">LOADING SYSTEM SETTINGS...</div>;
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const handleUpdate = async (item: SettingItem) => {
+    setUpdatingId(item.id);
+
+    // 1. Inputlardan güncel değerleri al
+    const labelVal = (document.getElementById(`label-${item.id}`) as HTMLInputElement).value;
+    const keyVal = (document.getElementById(`key-${item.id}`) as HTMLInputElement).value;
+    const metaVal = (document.getElementById(`meta-${item.id}`) as HTMLInputElement).value;
+
+    // 2. Metadata objesini hazırla
+    const finalMeta = (item.metadata && typeof item.metadata === 'object') 
+      ? { ...item.metadata, value: metaVal } 
+      : { value: metaVal };
+
+    const payload = {
+      label: labelVal,
+      key: keyVal,
+      metadata: finalMeta
+    };
+
+    console.log("🚀 API'ye Giden Veri (Payload):", payload);
+
+    try {
+      const response = await api.put(`/settings/${item.id}`, payload);
+      console.log("✅ Backend Yanıtı:", response.data);
+
+      // 3. Başarılıysa Local State'i güncelle (Arayüz yenilenir)
+      setSettings(prev => 
+        prev.map(s => s.id === item.id 
+          ? { ...s, label: labelVal, key: keyVal, metadata: finalMeta } 
+          : s
+        )
+      );
+
+      alert("DB Başarıyla Güncellendi ✓");
+    } catch (err) {
+      console.error("❌ Güncelleme hatası:", err);
+      alert("Hata oluştu! Console loglarına bakınız.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-brand-surface font-brand uppercase italic font-black animate-pulse text-slate-400">
+      Syncing System Data...
+    </div>
+  );
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="mb-8 border-b-4 border-brand-secondary pb-4">
-        <h1 className="text-3xl font-black uppercase italic text-brand-secondary">
-          System <span className="text-brand-primary">Configuration</span>
-        </h1>
-        <p className="text-xs font-bold text-brand-muted tracking-[0.3em] mt-1">LOOKUP VALUE MANAGEMENT</p>
+    <div className="min-h-screen bg-brand-surface p-8 font-brand">
+      <div className="max-w-7xl mx-auto mb-10 border-b-2 border-slate-100 pb-6 flex justify-between items-end">
+        <div>
+          <h1 className="text-4xl font-black text-brand-secondary uppercase tracking-tighter italic">
+            Global <span className="text-brand-primary">Settings</span>
+          </h1>
+          <p className="text-slate-400 font-black text-[9px] tracking-[0.4em] uppercase mt-3 italic">Live Database Management</p>
+        </div>
       </div>
 
-      {message && (
-        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 font-bold text-xs uppercase">
-          {message}
-        </div>
-      )}
-
-      <div className="bg-white shadow-xl rounded-ini overflow-hidden border border-brand-surface">
-        <table className="w-full text-left border-collapse">
+      <div className="max-w-7xl mx-auto bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl shadow-slate-200/50 overflow-hidden">
+        <table className="w-full text-left">
           <thead>
-            <tr className="bg-brand-secondary text-white text-[10px] uppercase tracking-widest">
-              <th className="p-4">Type ID</th>
-              <th className="p-4">Key / Code</th>
-              <th className="p-4">Label / Value</th>
-              <th className="p-4">Action</th>
+            <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-black uppercase text-slate-400">
+              <th className="px-8 py-6">ID</th>
+              <th className="px-8 py-6">Wording / Label</th>
+              <th className="px-8 py-6">System Key</th>
+              <th className="px-8 py-6">Value (Meta)</th>
+              <th className="px-8 py-6 text-right">Operation</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-brand-surface">
-            {lookups.map((item) => (
-              <tr key={item.id} className="hover:bg-brand-surface/30 transition-colors">
-                <td className="p-4 text-xs font-black text-brand-muted">{item.type_id}</td>
-                <td className="p-4 text-xs font-black uppercase">{item.key}</td>
-                <td className="p-4">
+          <tbody className="divide-y divide-slate-50">
+            {settings.map((item) => (
+              <tr key={item.id} className="group hover:bg-brand-primary/5 transition-all italic font-bold">
+                <td className="px-8 py-5 text-slate-300 font-mono text-xs">#{item.id}</td>
+                <td className="px-8 py-5">
+                  <input id={`label-${item.id}`} defaultValue={item.label} className="w-full border-2 border-slate-100 rounded-xl px-4 py-2 focus:border-brand-primary outline-none" />
+                </td>
+                <td className="px-8 py-5">
+                  <input id={`key-${item.id}`} defaultValue={item.key} className="w-full border-none bg-transparent text-xs font-mono text-slate-400 outline-none focus:text-brand-primary" />
+                </td>
+                <td className="px-8 py-5">
                   <input 
-                    className="bg-brand-surface px-3 py-1 rounded font-bold text-xs w-full focus:ring-2 focus:ring-brand-primary outline-none"
-                    defaultValue={item.label}
-                    onBlur={async (e) => {
-                       try {
-                         await updateLookupValue(item.id, { label: e.target.value });
-                         setMessage('Updated successfully!');
-                         setTimeout(() => setMessage(''), 3000);
-                       } catch (err) {
-                         alert('Update failed');
-                       }
-                    }}
+                    id={`meta-${item.id}`} 
+                    defaultValue={item.metadata?.value || (typeof item.metadata === 'string' ? item.metadata : "")} 
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-black text-brand-primary outline-none" 
                   />
                 </td>
-                <td className="p-4 text-xs italic text-brand-muted">Auto-saves on blur</td>
+                <td className="px-8 py-5 text-right">
+                  <button 
+                    onClick={() => handleUpdate(item)} 
+                    disabled={updatingId === item.id}
+                    className="bg-brand-secondary text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase hover:bg-brand-primary transition-all disabled:opacity-30"
+                  >
+                    {updatingId === item.id ? "COMMITING..." : "COMMIT UPDATE"}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

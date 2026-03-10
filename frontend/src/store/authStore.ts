@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { User } from '../types/index';
 
 interface AuthStore {
@@ -9,19 +10,29 @@ interface AuthStore {
   isAuthenticated: () => boolean;
 }
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: null,
-  token: localStorage.getItem('token'),
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      token: null,
 
-  setAuth: (user, token) => {
-    localStorage.setItem('token', token);
-    set({ user, token });
-  },
+      setAuth: (user, token) => {
+        // Artık manuel localStorage.setItem yapmana gerek yok, persist hallediyor
+        set({ user, token });
+      },
 
-  logout: () => {
-    localStorage.removeItem('token');
-    set({ user: null, token: null });
-  },
+      logout: () => {
+        set({ user: null, token: null });
+      },
 
-  isAuthenticated: () => !!get().token,
-}));
+      isAuthenticated: () => {
+        const state = get();
+        return !!state.token && !!state.user;
+      },
+    }),
+    {
+      name: 'auth-storage', // LocalStorage'daki anahtar adı
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
+);

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 const api = axios.create({
   baseURL: 'http://localhost:8000/api',
@@ -9,19 +10,22 @@ const api = axios.create({
 
 // Her isteğe token ekle
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  // Zustand store'dan anlık token'ı alıyoruz
+  const token = useAuthStore.getState().token;
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// 401 gelirse login'e yönlendir
+// 401 (Unauthorized) gelirse oturumu kapat
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
+      // Store'daki logout fonksiyonunu çağır (hem state'i hem storage'ı temizler)
+      useAuthStore.getState().logout();
       window.location.href = '/login';
     }
     return Promise.reject(error);

@@ -51,40 +51,50 @@ export function Rooms() {
     initLoad();
   }, []);
 
-  const loadSettings = async () => {
-    try {
-      const response = await getSystemSettings();
-      const settings = response.data?.data || response.data || [];
-      const roomCap = settings.find((s: any) => s.key === 'max_room_capacity');
-      if (roomCap && roomCap.metadata) {
-        setMaxCapacity(Number(roomCap.metadata));
+const loadSettings = async () => {
+  try {
+    const response = await getSystemSettings();
+    const settings = response.data?.data || response.data || [];
+    
+    // DB'den 'max_room_capacity' anahtarını bul
+    const roomCap = settings.find((s: any) => s.key === 'max_room_capacity');
+    
+    if (roomCap) {
+      // ÖNEMLİ: Metadata bir objedir, içindeki 'value' değerini almalıyız
+      // Eğer metadata string ise direkt Number(roomCap.metadata) da olabilir
+      const val = roomCap.metadata?.value || roomCap.metadata; 
+      if (val) {
+        setMaxCapacity(Number(val));
+        console.log("Dinamik Kapasite Set Edildi:", val);
       }
-    } catch (error) {
-      console.error("Ayarlar yüklenemedi, varsayılan 3 kullanılıyor.");
     }
-  };
+  } catch (error) {
+    console.error("Ayarlar yüklenemedi, varsayılan 3 kullanılıyor.");
+  }
+};
 
-  const loadFloors = async () => {
-    try {
-      const response = await getFloors();
-      const apiFloors = response.data || response || [];
-      const config: Record<string, FloorConfig> = {};
+const loadFloors = async () => {
+  try {
+    const response = await getFloors();
+    const apiFloors = response.data || response || [];
+    const config: Record<string, FloorConfig> = {};
+    
+    apiFloors.forEach((f: any, index: number) => {
+      const colorSet = floorColorPalette[index % floorColorPalette.length];
       
-      apiFloors.forEach((f: any, index: number) => {
-        const colorSet = floorColorPalette[index % floorColorPalette.length];
-        config[f.key.toUpperCase()] = {
-          label: f.label.toUpperCase(),
-          color: f.bg_color_class || 'text-brand-muted',
-          border: colorSet.border,
-          bg: 'bg-brand-surface'
-        };
-      });
-      setFloors(config);
-    } catch (error) {
-      console.error("Kat bilgileri yüklenemedi.");
-    }
-  };
-
+      // f.key (örn: '1_kat') üzerinden gruplandığı için key'i kullanıyoruz
+      config[f.key.toUpperCase()] = {
+        label: f.label.toUpperCase(), // DB'den gelen yeni isim
+        color: f.bg_color_class || colorSet.color, // DB'den gelen yeni renk sınıfı
+        border: f.border_color_class || colorSet.border,
+        bg: 'bg-brand-surface'
+      };
+    });
+    setFloors(config);
+  } catch (error) {
+    console.error("Kat bilgileri yüklenemedi.");
+  }
+};
   const loadAllLookupFeatures = async () => {
     try {
       const response = await getAllLookupFeatures();

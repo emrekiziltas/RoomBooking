@@ -3,46 +3,48 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\BookingController;
-use App\Http\Controllers\Api\LookupController; // Yeni ekledik
+use App\Http\Controllers\Api\LookupController;
 use Illuminate\Support\Facades\Route;
 
-// --- 🔓 Herkese Açık Route'lar ---
+// --- 🔓 Herkese Açık ---
 Route::post('auth/register', [AuthController::class, 'register']);
 Route::post('auth/login', [AuthController::class, 'login']);
 
-
-    
-// --- 🔒 Giriş Yapmış Kullanıcılar (Sanctum) ---
+// --- 🔒 Giriş Yapmış Kullanıcılar ---
 Route::middleware('auth:sanctum')->group(function () {
     
     Route::post('auth/logout', [AuthController::class, 'logout']);
 
-    // Dinamik Menü ve Kat Bilgileri (Yeni Lookup Sistemi)
-
+    // --- 🌍 Genel Bilgiler ---
     Route::get('floors', [LookupController::class, 'getFloors']);
-    Route::get('lookup-values/type/{typeId}', [LookupController::class, 'getByType']);
     Route::get('navigation', [LookupController::class, 'getNavigation']);
-    Route::get('settings', [LookupController::class, 'getSystemSettings']); 
+    Route::get('lookup-values/type/{typeId}', [LookupController::class, 'getByType']);
 
-    // Oda İşlemleri
+    // --- 🏨 Oda İşlemleri (Görüntüleme) ---
     Route::get('rooms/available', [RoomController::class, 'available']);
     Route::get('rooms/available-ranges', [RoomController::class, 'availableRanges']); 
     Route::get('rooms/{id}/bookings', [RoomController::class, 'bookings']);
     
-    // Tek bir apiResource yeterli (index, show, update kapsar)
-    Route::apiResource('rooms', RoomController::class)->only(['index', 'show', 'update']);
+    // Sadece listeleme ve tekil görüntüleme her kullanıcıya açık
+    Route::apiResource('rooms', RoomController::class)->only(['index', 'show']);
 
-    // Rezervasyon İşlemleri
+    // --- 📅 Rezervasyon İşlemleri ---
     Route::patch('bookings/{id}/move', [BookingController::class, 'move']);
     Route::patch('bookings/{id}/resize', [BookingController::class, 'resize']);
     Route::apiResource('bookings', BookingController::class);
 
-     Route::apiResource('rooms', RoomController::class)->only(['index', 'show', 'update']);
+    // --- 🛡️ Admin Özel İşlemler ---
     Route::middleware(\App\Http\Middleware\AdminCheck::class)->group(function () {
         
-        Route::get('settings', [LookupController::class, 'getSystemSettings']); 
-        // Sadece adminler odaları güncelleyebilsin/silebilsin
-        Route::patch('rooms/{id}', [RoomController::class, 'update']);
-    });
+        // Settings Yönetimi
+        Route::get('settings', [LookupController::class, 'index']);
+        Route::put('settings/{id}', [LookupController::class, 'update']);
 
+        // ODA GÜNCELLEME (İşte eksik olan ve 405 veren rota burasıydı)
+        Route::put('rooms/{id}', [RoomController::class, 'update']);
+        Route::patch('rooms/{id}', [RoomController::class, 'update']);
+        
+        // Eğer silme işlemi de yapacaksan:
+        // Route::delete('rooms/{id}', [RoomController::class, 'destroy']);
+    });
 });
