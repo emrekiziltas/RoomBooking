@@ -3,7 +3,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { logout } from '../../api/auth';
 import api from '../../api/axios';
-import axios from 'axios';
 
 export function Navbar() {
   const [navItems, setNavItems] = useState<any[]>([]);
@@ -13,14 +12,13 @@ export function Navbar() {
 
   useEffect(() => {
     const fetchNav = async () => {
-  try {
-    // Özel api nesnemizi kullanıyoruz, token ve adres otomatik eklenecek!
-    const response = await api.get('/navigation'); 
-    setNavItems(response.data);
-  } catch (error) {
-    console.error("Navigasyon hatası:", error);
-  }
-};
+      try {
+        const response = await api.get('/navigation'); 
+        setNavItems(response.data);
+      } catch (error) {
+        console.error("Navigasyon hatası:", error);
+      }
+    };
     fetchNav();
   }, []);
 
@@ -30,6 +28,22 @@ export function Navbar() {
       navigate('/login');
     }
   }
+
+  // --- ROL TABANLI FİLTRELEME MANTIĞI ---
+  const filteredNavItems = navItems.filter((item) => {
+    try {
+      const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+      
+      // Eğer metadata içinde requiresAdmin: true varsa ve kullanıcı admin değilse, bu linki gizle
+      if (meta?.requiresAdmin === true && user?.role !== 'admin') {
+        return false;
+      }
+      return true;
+    } catch (e) {
+      // Parse hatası olsa bile güvenli tarafta kalıp linki gösteriyoruz
+      return true; 
+    }
+  });
 
   const getLinkStyles = (item: any) => ({ isActive }: { isActive: boolean }) =>
     `text-[11px] font-black uppercase tracking-widest transition-all border-b-2 py-1 ${
@@ -46,8 +60,7 @@ export function Navbar() {
         </div>
 
         <div className="flex gap-6">
-          {navItems.length > 0 ? navItems.map((item) => {
-            // Güvenli path çekme
+          {filteredNavItems.length > 0 ? filteredNavItems.map((item) => {
             let path = '#';
             try {
               const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
@@ -64,6 +77,13 @@ export function Navbar() {
       </div>
 
       <div className="flex items-center gap-6">
+        {/* Admin olduğunu belli eden küçük bir badge (İsteğe bağlı) */}
+        {user?.role === 'admin' && (
+          <span className="bg-brand-primary/10 text-brand-primary text-[8px] font-black px-2 py-1 rounded-md uppercase border border-brand-primary/20 tracking-tighter">
+            System Admin
+          </span>
+        )}
+
         <div className="text-right hidden md:block">
           <p className="text-[10px] font-black text-slate-400 uppercase leading-none">Welcome</p>
           <p className="text-sm font-black text-slate-900 uppercase">{user?.name}</p>

@@ -74,7 +74,7 @@ export function Rooms() {
         const colorSet = floorColorPalette[index % floorColorPalette.length];
         config[f.key.toUpperCase()] = {
           label: f.label.toUpperCase(),
-          color: colorSet.color,
+          color: f.bg_color_class || 'text-brand-muted',
           border: colorSet.border,
           bg: 'bg-brand-surface'
         };

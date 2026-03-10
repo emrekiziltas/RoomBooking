@@ -36,4 +36,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('bookings/{id}/move', [BookingController::class, 'move']);
     Route::patch('bookings/{id}/resize', [BookingController::class, 'resize']);
     Route::apiResource('bookings', BookingController::class);
+
+     Route::apiResource('rooms', RoomController::class)->only(['index', 'show', 'update']);
+    Route::middleware(\App\Http\Middleware\AdminCheck::class)->group(function () {
+        
+        Route::get('settings', [LookupController::class, 'getSystemSettings']); 
+        // Sadece adminler odaları güncelleyebilsin/silebilsin
+        Route::patch('rooms/{id}', [RoomController::class, 'update']);
+    });
+
 });
