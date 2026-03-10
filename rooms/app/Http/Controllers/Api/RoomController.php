@@ -216,64 +216,44 @@ public function availableRanges(Request $request)
 
     $rooms = Room::with('features')->get();
 
-    return response()->json($rooms);
+   //return response()->json($rooms);
     
     $availableRanges = [];
 
-    foreach ($rooms as $room) {
-        // Başlangıç tarihinden itibaren ardışık boş günleri bul
-        $consecutiveDays = 0;
-        $rangeStart = null;
-        $foundRanges = [];
+foreach ($rooms as $room) {
+    $isAvailable = true;
 
-        for ($i = 0; $i < 30; $i++) { // 30 gün içinde ara
-            $checkDate = date('Y-m-d', strtotime($startDate . " +{$i} days"));
-            
-            // O tarihte booking sayısını say
-            $bookingCount = $room->bookings()
-                ->whereDate('start_time', '<=', $checkDate)
-                ->whereDate('end_time', '>=', $checkDate)
-                ->count();
-            
-            // Oda tam dolu mu?
-            $isFullyBooked = $bookingCount >= $room->capacity;
-            
-            if (!$isFullyBooked) {
-                // Oda tam dolu değil (müsait kapasite var)
-                if ($consecutiveDays === 0) {
-                    $rangeStart = $checkDate;
-                }
-                $consecutiveDays++;
-                
-                // İstenen gün sayısına ulaştık mı?
-                if ($consecutiveDays >= $days) {
-                    $foundRanges[] = [
-                        'start' => $rangeStart,
-                        'end' => $checkDate,
-                        'days' => $consecutiveDays
-                    ];
-                    break; // İlk uygun aralığı bulduk
-                }
-            } else {
-                // Tam dolu - sıfırla
-                $consecutiveDays = 0;
-                $rangeStart = null;
-            }
-        }
-
-        // Sadece uygun aralık BULUNAN odaları ekle
-        if (count($foundRanges) > 0) {
-            $availableRanges[] = [
-                'room' => [
-                    'id' => $room->id,
-                    'name' => $room->name,
-                    'capacity' => $room->capacity,
-                    'features' => $room->features,
-                ],
-                'ranges' => $foundRanges
-            ];
+    for ($i = 0; $i < $days; $i++) {
+        $checkDate = date('Y-m-d', strtotime($startDate . " +{$i} days"));
+        
+        $bookingCount = $room->bookings()
+            ->whereDate('start_time', '<=', $checkDate)
+            ->whereDate('end_time', '>=', $checkDate)
+            ->count();
+        
+        if ($bookingCount >= $room->capacity) {
+            $isAvailable = false;
+            break;
         }
     }
+
+    if ($isAvailable) {
+        $endDate = date('Y-m-d', strtotime($startDate . " +" . ($days - 1) . " days"));
+        $availableRanges[] = [
+            'room' => [
+                'id' => $room->id,
+                'name' => $room->name,
+                'capacity' => $room->capacity,
+                'features' => $room->features,
+            ],
+            'ranges' => [[
+                'start' => $startDate,
+                'end' => $endDate,
+                'days' => (int)$days
+            ]]
+        ];
+    }
+}
 
     return response()->json([
         'success' => true,

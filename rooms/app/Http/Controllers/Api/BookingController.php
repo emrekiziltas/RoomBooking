@@ -164,53 +164,50 @@ class BookingController extends Controller
             'data' => $booking->fresh(['room', 'user'])
         ]);
     }
+public function getAvailableRanges(Request $request)
+{
+    $startDate = $request->query('start_date');
+    $days = (int) $request->query('days', 1);
 
-    public function getAvailableRooms(Request $request)
-    {
-        dd("BURADAYIM! Çalışan dosya: " . __FILE__);
-        // Loglama Başlat
-    Log::info('--- GetAvailableRooms Sorgusu Başlatıldı ---', [
-        'ip_adresi' => $request->ip(),
-        'url' => $request->fullUrl(),
-        'gelen_tarih' => $request->query('date'),
-        'user_agent' => $request->userAgent(), // Hangi tarayıcıdan/cihazdan geldiği
-        'istek_zamani' => now()->toDateTimeString()
-    ]);
-
-        $request->validate([
-            'date' => 'required|date',
-        ]);
-
-        $date = $request->query('date');
-        $rooms = Room::all();
-        
-        $availableRooms = [];
-        
-        foreach ($rooms as $room) {
-            $bookingCount = Booking::where('room_id', $room->id)
-                ->whereDate('start_time', '<=', $date)
-                ->whereDate('end_time', '>=', $date)
-                ->count();
-            
-            if ($bookingCount < $room->capacity) {
-                $availableRooms[] = [
-                    'id' => $room->id,
-                    'name' => $room->name,
-                    'capacity' => $room->capacity,
-                    'features' => $room->features,
-                    'booked_slots' => $bookingCount,
-                    'available_capacity' => $room->capacity - $bookingCount,
-                    'occupancy_rate' => round(($bookingCount / $room->capacity) * 100, 2),
-                ];
-            }
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $availableRooms
-        ]);
+    if (!$startDate) {
+        return response()->json(['success' => false, 'message' => 'start_date required'], 400);
     }
 
+    $endDate = Carbon::parse($startDate)->addDays($days - 1)->format('Y-m-d');
+
+    $availableRooms = Room::with('features')->get()->filter(function($room) use ($startDate, $endDate, $days) {
+        // Check every day in the range is under capacity
+        $current = Carbon::parse($startDate);
+        $end = Carbon::parse($endDate);
+
+        while ($current->lte($end)) {
+            $count = Booking::where('room_id', $room->id)
+                ->whereDate('start_time', '<=', $current)
+                ->whereDate('end_time', '>=', $current)
+                ->count();
+
+            if ($count >= $room->capacity) return false;
+            $current->addDay();
+        }
+        return true;
+    })->values();
+
+    return response()->json([
+        'success' => true,
+        'data' => $availableRooms->map(fn($room) => [
+            'id' => $room->id,
+            'name' => $room->name,
+            'capacity' => $room->capacity,
+            'features' => $room->features,
+            'ranges' => [[
+                'start' => $startDate,
+                'end' => $endDate,
+                'days' => $days
+            ]]
+        ])
+    ]);
+}
+  
     public function destroy($id)
     {
         $booking = Booking::findOrFail($id);

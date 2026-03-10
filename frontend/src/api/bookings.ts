@@ -22,7 +22,17 @@ export const deleteBooking = async (id: number) => {
   return response.data;
 };
 
-export const updateBooking = async (id: number, data: { title?: string; color?: string }) => {
+//export const updateBooking = async (id: number, data: { title?: string; color?: string }) => {
+export const updateBooking = async (
+  id: number, 
+  data: { 
+    title?: string; 
+    color?: string; 
+    room_id?: number; 
+    start_time?: string; 
+    end_time?: string; 
+  }
+) => {
   const response = await api.patch(`/bookings/${id}`, data);
   return response.data;
 };
