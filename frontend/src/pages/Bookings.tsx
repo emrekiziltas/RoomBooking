@@ -14,9 +14,11 @@ export function Bookings() {
   const [roomConfigs, setRoomConfigs] = useState<Record<string, { label: string, color: string }>>({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState('');
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string>('all');
+
+  // --- CUSTOM TOAST STATE ---
+  const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
 
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
@@ -32,6 +34,14 @@ export function Bookings() {
 
   const [editForm, setEditForm] = useState({ ...form });
 
+  // Auto-hide Toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -43,24 +53,14 @@ export function Bookings() {
 
         const apiBookings = bRes.data || [];
         const apiRooms = rRes.data || [];
-const apiFloors = Array.isArray(fRes.data) ? fRes.data : Array.isArray(fRes) ? fRes : [];
-console.log('apiFloors length:', apiFloors.length); // 0 mu geliyor?
-console.log('RAW FLOORS:', apiFloors); 
+        const apiFloors = Array.isArray(fRes.data) ? fRes.data : Array.isArray(fRes) ? fRes : [];
 
-        // floor_id → border color map (border_color_class kolonundan)
         const finalRoomConfig: Record<string, any> = {};
 
-console.log('ROOM floor_id:', apiRooms[0].floor_id, typeof apiRooms[0].floor_id);
         apiRooms.forEach((room: any) => {
           const floor = apiFloors.find((f: any) => f.id === room.floor_id);
           const borderClass = floor?.border_color_class || '';
-
-console.log('FLOOR FOUND:', floor);
-console.log('BORDER CLASS:', borderClass);
-
-       // YERİNE BUNU YAZ:
-          const color = borderClass || 'border-brand-muted'
-
+          const color = borderClass || 'border-brand-muted';
           const roomNameUpper = room.name.toUpperCase();
           finalRoomConfig[roomNameUpper] = { label: roomNameUpper, color };
         });
@@ -69,8 +69,7 @@ console.log('BORDER CLASS:', borderClass);
         setRooms(apiRooms);
         setRoomConfigs(finalRoomConfig);
       } catch (err) {
-        console.error("Data load failed", err);
-        setError("Veri yükleme hatası!");
+        setToast({ msg: "Veri yükleme hatası!", type: 'error' });
       } finally {
         setLoading(false);
       }
@@ -98,7 +97,10 @@ console.log('BORDER CLASS:', borderClass);
   }, [bookings, selectedRoomId]);
 
   const handleCreate = async () => {
-    if (!form.room_id || !form.title) { setError('Alanları doldurun.'); return; }
+    if (!form.room_id || !form.title) { 
+      setToast({ msg: "Lütfen alanları doldurun.", type: 'error' });
+      return; 
+    }
     const startTime = `${form.start_date} ${SLOTS[form.start_slot as keyof typeof SLOTS].start}`;
     const endTime = `${form.end_date} ${SLOTS[form.end_slot as keyof typeof SLOTS].end}`;
     try {
@@ -107,7 +109,10 @@ console.log('BORDER CLASS:', borderClass);
       setForm({ ...form, title: '' });
       const updated = await getBookings();
       setBookings(updated.data);
-    } catch (err: any) { setError(err.response?.data?.message || 'Hata!'); }
+      setToast({ msg: "Kayıt başarıyla oluşturuldu.", type: 'success' });
+    } catch (err: any) { 
+      setToast({ msg: err.response?.data?.message || "Hata oluştu.", type: 'error' });
+    }
   };
 
   const handleUpdate = async () => {
@@ -115,10 +120,19 @@ console.log('BORDER CLASS:', borderClass);
     const startTime = `${editForm.start_date} ${SLOTS[editForm.start_slot as keyof typeof SLOTS].start}`;
     const endTime = `${editForm.end_date} ${SLOTS[editForm.end_slot as keyof typeof SLOTS].end}`;
     try {
-      const res = await updateBooking(editingBooking.id, { ...editForm, start_time: startTime, end_time: endTime });
+      const res = await updateBooking(editingBooking.id, {
+        ...editForm,
+        room_id: Number(editForm.room_id) || editingBooking.room?.id || editingBooking.room_id,
+        title: editForm.title,
+        start_time: startTime,
+        end_time: endTime,
+      });
       setBookings(bookings.map(b => b.id === editingBooking.id ? res.data : b));
       setEditingBooking(null);
-    } catch (err) { alert('Hata!'); }
+      setToast({ msg: "Güncelleme başarılı.", type: 'success' });
+    } catch (err: any) {
+      setToast({ msg: err.response?.data?.message || "Güncellenemedi.", type: 'error' });
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -126,13 +140,39 @@ console.log('BORDER CLASS:', borderClass);
     try {
       await deleteBooking(id);
       setBookings(bookings.filter(b => b.id !== id));
-    } catch (err) { alert('Hata!'); }
+      setToast({ msg: "Kayıt silindi.", type: 'success' });
+    } catch (err) { 
+      setToast({ msg: "Silme hatası.", type: 'error' });
+    }
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center font-black text-brand-secondary animate-pulse text-2xl tracking-widest italic uppercase">Preparing...</div>;
 
   return (
     <div className="min-h-screen bg-brand-surface px-4 pt-2 pb-12 font-brand">
+      
+      {/* TOASTER UI */}
+      {toast && (
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[300] animate-in fade-in slide-in-from-top-10 duration-500">
+          <div className={`
+            flex items-center gap-4 px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2
+            ${toast.type === 'error' ? 'bg-white border-brand-danger' : 'bg-white border-brand-primary'}
+          `}>
+            <div className={`
+              w-8 h-8 rounded-full flex items-center justify-center font-black text-sm
+              ${toast.type === 'error' ? 'bg-brand-danger text-white' : 'bg-brand-primary text-white'}
+            `}>
+              {toast.type === 'error' ? '!' : '✓'}
+            </div>
+            <p className="font-black text-brand-secondary text-sm uppercase tracking-tight italic whitespace-nowrap">
+              {toast.msg}
+            </p>
+            <div className="w-[2px] h-4 bg-brand-surface mx-2" />
+            <button onClick={() => setToast(null)} className="text-brand-muted hover:text-brand-secondary font-black text-sm px-2">KAPAT</button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto mb-6 border-b-2 border-brand-surface pb-1 flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-black text-brand-secondary uppercase italic">Ops <span className="text-brand-primary">Planning</span></h1>
@@ -177,7 +217,6 @@ console.log('BORDER CLASS:', borderClass);
                 </select>
               </div>
             </div>
-            {error && <p className="mt-3 text-brand-danger text-[9px] font-black uppercase text-center italic">{error}</p>}
             <button onClick={handleCreate} className="w-full mt-4 bg-brand-secondary text-white py-3 rounded-ini font-black text-[11px] tracking-widest hover:bg-brand-primary">COMMIT TO SCHEDULE</button>
           </div>
         )}
@@ -222,7 +261,7 @@ console.log('BORDER CLASS:', borderClass);
                               </span>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => { setEditingBooking(b); setEditForm({ title: b.title, room_id: String(b.room_id), start_date: b.start_time.slice(0, 10), end_date: b.end_time.slice(0, 10), start_slot: b.start_time.includes('08:30') ? 'morning' : 'afternoon', end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' }); }} className="p-1 text-[10px] hover:scale-110">✏️</button>
+                              <button onClick={() => { setEditingBooking(b); setEditForm({ title: b.title,room_id: String(b.room?.id || b.room_id || ''), start_date: b.start_time.slice(0, 10), end_date: b.end_time.slice(0, 10), start_slot: b.start_time.includes('08:30') ? 'morning' : 'afternoon', end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' }); }} className="p-1 text-[10px] hover:scale-110">✏️</button>
                               <button onClick={() => handleDelete(b.id)} className="p-1 text-[10px] hover:scale-110">🗑️</button>
                             </div>
                           </div>
