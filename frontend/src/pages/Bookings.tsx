@@ -53,21 +53,27 @@ export function Bookings() {
 
         const apiBookings = bRes.data || [];
         const apiRooms = rRes.data || [];
-        const apiFloors = Array.isArray(fRes.data) ? fRes.data : Array.isArray(fRes) ? fRes : [];
+        //const apiFloors = Array.isArray(fRes.data) ? fRes.data : Array.isArray(fRes) ? fRes : [];
+const apiFloors = fRes.data ?? [];
 
         const finalRoomConfig: Record<string, any> = {};
 
         apiRooms.forEach((room: any) => {
           const floor = apiFloors.find((f: any) => f.id === room.floor_id);
-          const borderClass = floor?.border_color_class || '';
+           const borderClass = floor?.border_color_class || '';
           const color = borderClass || 'border-brand-muted';
           const roomNameUpper = room.name.toUpperCase();
-          finalRoomConfig[roomNameUpper] = { label: roomNameUpper, color };
+          finalRoomConfig[roomNameUpper] = {
+    label: roomNameUpper,
+    color: floor?.border_color_class || 'border-brand-muted'
+  };
         });
 
         setBookings(apiBookings);
         setRooms(apiRooms);
+
         setRoomConfigs(finalRoomConfig);
+
       } catch (err) {
         setToast({ msg: "Veri yükleme hatası!", type: 'error' });
       } finally {
