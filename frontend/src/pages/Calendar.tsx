@@ -21,8 +21,6 @@ function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boo
   return 'bg-white border-brand-surface text-slate-200'; 
 }
 
-
-
 const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
   const [localValue, setLocalValue] = useState(value);
   useEffect(() => { setLocalValue(value); }, [value]);
@@ -53,6 +51,9 @@ export function Calendar() {
     return d;
   });
 
+  // --- NEW TOAST STATE ---
+  const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
+
   const [isNewBookingModalOpen, setIsNewBookingModalOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [newBookingData, setNewBookingData] = useState({ roomId: 0, startDate: '', endDate: '', title: '' });
@@ -60,12 +61,19 @@ export function Calendar() {
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
   
-  //const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Auto-hide Toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const fetchData = async () => {
     try {
@@ -144,8 +152,11 @@ export function Calendar() {
       });
       setIsNewBookingModalOpen(false);
       setNewBookingData({ roomId: 0, startDate: '', endDate: '', title: '' });
+      setToast({ msg: "Kayıt başarıyla oluşturuldu.", type: 'success' });
       await fetchData();
-    } catch (err) { alert("Hata oluştu."); }
+    } catch (err: any) { 
+      setToast({ msg: err.response?.data?.message || "Hata oluştu.", type: 'error' }); 
+    }
   };
 
   const handleUpdate = async () => {
@@ -155,10 +166,13 @@ export function Calendar() {
         title: editForm.title,
         start_time: `${editForm.start_date}T09:00:00`,
         end_time: `${editForm.end_date}T17:00:00`,
-      });
+      } as any);
       setEditingBooking(null);
+      setToast({ msg: "Güncelleme başarılı.", type: 'success' });
       await fetchData();
-    } catch (err) { alert("Güncellenemedi."); }
+    } catch (err: any) { 
+      setToast({ msg: err.response?.data?.message || "Güncellenemedi.", type: 'error' }); 
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -166,85 +180,64 @@ export function Calendar() {
     try {
       await deleteBooking(id);
       setEditingBooking(null);
+      setToast({ msg: "Kayıt silindi.", type: 'success' });
       await fetchData();
-    } catch (err) { alert("Hata."); }
+    } catch (err) { setToast({ msg: "Silme hatası.", type: 'error' }); }
   };
 
-const handleDragStart = (e: React.DragEvent, booking: Booking) => {
-  setDraggedBooking(booking);
-  
-  const dragTarget = e.currentTarget as HTMLElement;
-  e.dataTransfer.setDragImage(dragTarget, 0, 0); 
-  
-  e.dataTransfer.effectAllowed = 'move';
-};
+  const handleDragStart = (e: React.DragEvent, booking: Booking) => {
+    setDraggedBooking(booking);
+    const dragTarget = e.currentTarget as HTMLElement;
+    e.dataTransfer.setDragImage(dragTarget, 0, 0); 
+    e.dataTransfer.effectAllowed = 'move';
+  };
 
   const handleDragOver = (e: React.DragEvent, roomId: number, date: string) => {
     e.preventDefault();
     setDragOverCell({ roomId, date });
   };
-const dynamicFloors = useMemo(() => {
-  const floorSet = new Set(rooms.map(room => room.name?.[0]?.toUpperCase()).filter(Boolean));
-  return Array.from(floorSet).sort(); // Alfabetik sıralar: A, B, F, M...
-}, [rooms]);
 
-const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
-  e.preventDefault();
-  if (!draggedBooking) return;
+  const dynamicFloors = useMemo(() => {
+    const floorSet = new Set(rooms.map(room => room.name?.[0]?.toUpperCase()).filter(Boolean));
+    return Array.from(floorSet).sort();
+  }, [rooms]);
 
-  // 1. Tarih ve Süre Hesaplamaları
-  const start = new Date(draggedBooking.start_time);
-  const end = new Date(draggedBooking.end_time);
-  const durationMs = end.getTime() - start.getTime();
-  
-  // Yerel saati koruyarak yeni tarihleri oluştur
-  const newStart = new Date(`${targetDate}T${draggedBooking.start_time.split(/[T\s]/)[1] || '09:00:00'}`);
-  const newEnd = new Date(newStart.getTime() + durationMs);
-  
-  const format = (d: Date) => {
-    const z = d.getTimezoneOffset() * 60 * 1000;
-    const local = new Date(d.getTime() - z);
-    return local.toISOString().split('.')[0];
+  const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
+    e.preventDefault();
+    if (!draggedBooking) return;
+
+    const start = new Date(draggedBooking.start_time);
+    const end = new Date(draggedBooking.end_time);
+    const durationMs = end.getTime() - start.getTime();
+    
+    const newStart = new Date(`${targetDate}T${draggedBooking.start_time.split(/[T\s]/)[1] || '09:00:00'}`);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+    
+    const format = (d: Date) => {
+      const z = d.getTimezoneOffset() * 60 * 1000;
+      const local = new Date(d.getTime() - z);
+      return local.toISOString().split('.')[0];
+    };
+
+    try {
+      await updateBooking(draggedBooking.id, {
+        room_id: targetRoomId,
+        title: draggedBooking.title,
+        start_time: format(newStart),
+        end_time: format(newEnd),
+      } as any);
+      
+      setToast({ msg: "Rezervasyon taşındı.", type: 'success' });
+      await fetchData();
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Taşıma işlemi yapılamadı.";
+      setToast({ msg: `DİKKAT: ${msg}`, type: 'error' });
+    } finally {
+      setDraggedBooking(null);
+      setDragOverCell(null);
+    }
   };
 
-  try {
-    // 2. API Güncellemesi
-    await updateBooking(draggedBooking.id, {
-      room_id: targetRoomId,
-      title: draggedBooking.title,
-      start_time: format(newStart),
-      end_time: format(newEnd),
-    });
-    
-    // Başarılı ise veriyi tazele
-    await fetchData();
-
-  } catch (err: any) {
-    // 3. Gerçek Hata Mesajını Yakalama
-    console.error("DETAYLI_HATA:", err);
-
-    let msg = "İşlem yapılamadı.";
-
-    if (err.response?.data?.message) {
-      // Laravel'den gelen özel mesaj (Örn: "Oda kapasitesi dolu!")
-      msg = err.response.data.message;
-    } else if (err.response?.statusText) {
-      msg = `Sunucu Hatası: ${err.response.statusText}`;
-    } else if (err.request) {
-      msg = "Sunucuya ulaşılamıyor, internetinizi kontrol edin.";
-    } else {
-      msg = err.message;
-    }
-
-    // Kullanıcıya net bilgi ver
-    alert(`DİKKAT: ${msg}`);
-    
-  } finally {
-    // 4. State Temizliği (Hata olsa da olmasa da çalışır)
-    setDraggedBooking(null);
-    setDragOverCell(null);
-  }
-};
   const handleStartDateChange = (newStartStr: string) => {
     if (!newStartStr) return;
     const currentDuration = editingBooking ? (editForm.duration || 1) : 1;
@@ -301,12 +294,13 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
       </div>
 
       {/* CALENDAR TABLE */}
-<div className="ini-card overflow-visible">
+      <div className="ini-card overflow-visible">
         <div className="overflow-x-auto no-scrollbar">
-           <table className="w-full border-collapse table-fixed">
+          <table className="w-full border-collapse table-fixed">
             <thead>
-               <tr className="bg-brand-surface/30">
-             <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md w-[120px]">Resources</th>{days.map(day => {
+              <tr className="bg-brand-surface/30">
+                <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-brand-secondary text-[10px] tracking-widest shadow-md w-[120px]">Resources</th>
+                {days.map(day => {
                   const isToday = day.getTime() === today.getTime();
                   return (
                     <th key={day.toISOString()} className={`p-2 border-r border-brand-surface min-w-[90px] text-center transition-all ${isToday ? 'bg-brand-primary text-white' : ''}`}>
@@ -319,10 +313,10 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
             </thead>
             <tbody className="ini-divide">
               {dynamicFloors.map(floor => (
-    <Fragment key={floor}>
-      <tr 
-        onClick={() => toggleFloor(floor)}
-        onDragOver={(e) => handleDragOverFloor(e, floor)}
+                <Fragment key={floor}>
+                  <tr 
+                    onClick={() => toggleFloor(floor)}
+                    onDragOver={(e) => handleDragOverFloor(e, floor)}
                     onDragLeave={handleDragLeaveFloor}
                     className={`cursor-pointer transition-all duration-300 select-none border-y border-white/10 h-10
                       ${collapsedFloors.includes(floor) ? 'bg-brand-secondary hover:bg-brand-primary/80' : 'bg-brand-secondary/90'}
@@ -376,16 +370,6 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
                                   <span className="break-words w-full pointer-events-none leading-tight">
                                     {b.title}
                                   </span>
-
-                                  {/* HOVER BALONU (TOOLTIP) */}
-                                  {draggedBooking?.id !== b.id && (
-  <div className="absolute bottom-full left-0 mb-2 z-[100] w-max max-w-[200px] ... invisible group-hover/booking:visible">
-    <p className="text-[9px] ...">
-      {b.title}
-    </p>
-    <div className="absolute top-full left-2 border-4 border-transparent border-t-brand-secondary"></div>
-  </div>
-)}
                                 </div>
                               ))}
                             </div>
@@ -447,6 +431,28 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
           </div>
         </div>
       )}
+
+    {/* TOASTER UI - ÜST ORTA KONUM */}
+{toast && (
+  <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[300] animate-in fade-in slide-in-from-top-10 duration-500">
+    <div className={`
+      flex items-center gap-4 px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2
+      ${toast.type === 'error' ? 'bg-white border-brand-danger' : 'bg-white border-brand-primary'}
+    `}>
+      <div className={`
+        w-8 h-8 rounded-full flex items-center justify-center font-black text-sm
+        ${toast.type === 'error' ? 'bg-brand-danger text-white' : 'bg-brand-primary text-white'}
+      `}>
+        {toast.type === 'error' ? '!' : '✓'}
+      </div>
+      <p className="font-black text-brand-secondary text-sm uppercase tracking-tight italic whitespace-nowrap">
+        {toast.msg}
+      </p>
+      <div className="w-[2px] h-4 bg-brand-surface mx-2" />
+      <button onClick={() => setToast(null)} className="text-brand-muted hover:text-brand-secondary font-black text-sm px-2">KAPAT</button>
+    </div>
+  </div>
+)}
     </div>
   );
 }
