@@ -21,18 +21,20 @@ export function AvailableRanges() {
     }
   }, [toast]);
 
-  const loadFloors = async () => {
-    try {
-      const response = await getFloors();
-      const apiFloors = response.data || response || [];
-      const config: Record<string, any> = {};
-      const colors = ['text-brand-primary', 'text-brand-success', 'text-brand-danger', 'text-brand-info'];
-      apiFloors.forEach((f: any, i: number) => {
-        config[f.key.toUpperCase()] = { label: f.label.toUpperCase(), color: colors[i % colors.length] };
-      });
-      setFloors(config);
-    } catch (e) { console.error("Floors load failed"); }
-  };
+const loadFloors = async () => {
+  try {
+    const response = await getFloors();
+    const apiFloors = response.data ?? [];
+    const config: Record<string, any> = {};
+    apiFloors.forEach((f: any) => {
+      config[f.key.toUpperCase()] = {
+        label: f.label.toUpperCase(),
+        color: f.bg_color_class || 'text-brand-muted'
+      };
+    });
+    setFloors(config);
+  } catch (e) { console.error("Floors load failed"); }
+};
 
   const fetchRanges = async () => {
     setLoading(true);
