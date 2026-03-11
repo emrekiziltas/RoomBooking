@@ -1,5 +1,5 @@
 import { useEffect, useState, Fragment, useMemo, useRef } from 'react';
-import { getRooms } from '../api/rooms';
+import { getRooms, getFloors } from '../api/rooms';
 import { getBookings, createBooking, updateBooking, deleteBooking } from '../api/bookings';
 import type { Room, Booking } from '../types/index';
 
@@ -44,6 +44,7 @@ export function Calendar() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewWindow, setViewWindow] = useState<7 | 15>(15);
+  const [floorConfigs, setFloorConfigs] = useState<Record<string, any>>({});
   const [collapsedFloors, setCollapsedFloors] = useState<string[]>(['M', 'S']);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -75,14 +76,19 @@ export function Calendar() {
     }
   }, [toast]);
 
-  const fetchData = async () => {
-    try {
-      const [r, b] = await Promise.all([getRooms(), getBookings()]);
-      setRooms(r.data);
-      setBookings(b.data);
-      setLoading(false);
-    } catch (err) { console.error("Veri hatası:", err); }
-  };
+const fetchData = async () => {
+  try {
+    const [r, b, f] = await Promise.all([getRooms(), getBookings(), getFloors()]);
+    setRooms(r.data);
+    setBookings(b.data);
+    const configs: Record<string, any> = {};
+    (f.data ?? []).forEach((floor: any) => {
+      configs[floor.key.toUpperCase()] = { label: floor.label.toUpperCase() };
+    });
+    setFloorConfigs(configs);
+    setLoading(false);
+  } catch (err) { console.error("Veri hatası:", err); }
+};
 
   useEffect(() => { fetchData(); }, []);
 
@@ -324,7 +330,7 @@ export function Calendar() {
                   >
                     <td className="sticky left-0 z-30 bg-brand-secondary px-4 text-center shadow-xl border-r border-white/10">
                         <div className="flex items-center justify-center gap-2 text-white font-black uppercase text-[10px] tracking-widest h-full">
-                           {collapsedFloors.includes(floor) ? '▶' : '▼'} FLOOR {floor}
+                    {collapsedFloors.includes(floor) ? '▶' : '▼'} {floorConfigs[floor]?.label || `FLOOR ${floor}`}
                         </div>
                     </td>
                     <td colSpan={days.length} className="relative overflow-hidden group">
