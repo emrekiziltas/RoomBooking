@@ -46,27 +46,30 @@ const buildFloorConfigs = (apiFloors: any[]): Record<string, FloorConfig> => {
     }
   };
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const [fRes, rRes] = await Promise.all([
-          getFloors(),
-          getAvailableRooms(selectedDate)
-        ]);
+const [floorsLoaded, setFloorsLoaded] = useState(false);
 
-        const apiFloors = fRes.data ?? [];
-        setFloorConfigs(buildFloorConfigs(apiFloors));
-
-        const roomsData = Array.isArray(rRes) ? rRes : (rRes.data || []);
-        setRooms(roomsData);
-      } catch (e) {
-        console.error('Init failed', e);
-      } finally {
-        setLoading(false);
+useEffect(() => {
+  const init = async () => {
+    setLoading(true);
+    try {
+      const [fRes, rRes] = await Promise.all([
+        floorsLoaded ? Promise.resolve({ data: null }) : getFloors(),
+        getAvailableRooms(selectedDate)
+      ]);
+      if (!floorsLoaded && fRes.data) {
+        setFloorConfigs(buildFloorConfigs(fRes.data));
+        setFloorsLoaded(true);
       }
-    };
-    init();
-  }, []);
+      const roomsData = Array.isArray(rRes) ? rRes : (rRes.data || []);
+      setRooms(roomsData);
+    } catch (e) {
+      console.error('Init failed', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+  init();
+}, [selectedDate]);
 
   useEffect(() => {
     fetchRooms(selectedDate);

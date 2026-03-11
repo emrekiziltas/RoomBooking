@@ -17,9 +17,7 @@ export function Bookings() {
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string>('all');
 
-  // --- CUSTOM TOAST STATE ---
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
-
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
 
@@ -34,7 +32,6 @@ export function Bookings() {
 
   const [editForm, setEditForm] = useState({ ...form });
 
-  // Auto-hide Toast
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
@@ -42,46 +39,45 @@ export function Bookings() {
     }
   }, [toast]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [bRes, rRes, fRes] = await Promise.all([
-          getBookings(),
-          getRooms(),
-          getFloors()
-        ]);
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      const [bRes, rRes, fRes] = await Promise.all([
+        getBookings(),
+        getRooms(),
+        getFloors()
+      ]);
 
-        const apiBookings = bRes.data || [];
-        const apiRooms = rRes.data || [];
-        //const apiFloors = Array.isArray(fRes.data) ? fRes.data : Array.isArray(fRes) ? fRes : [];
-const apiFloors = fRes.data ?? [];
+      const apiBookings = bRes.data || [];
+      const apiRooms = rRes.data || [];
+      const apiFloors = fRes.data ?? [];
 
-        const finalRoomConfig: Record<string, any> = {};
+      const finalRoomConfig: Record<string, any> = {};
 
-        apiRooms.forEach((room: any) => {
-          const floor = apiFloors.find((f: any) => f.id === room.floor_id);
-           const borderClass = floor?.border_color_class || '';
-          const color = borderClass || 'border-brand-muted';
-          const roomNameUpper = room.name.toUpperCase();
-          finalRoomConfig[roomNameUpper] = {
-    label: roomNameUpper,
-    color: floor?.border_color_class || 'border-brand-muted'
+      apiRooms.forEach((room: any) => {
+        const prefix = room.key?.toUpperCase() || room.name[0].toUpperCase();
+        const floor = apiFloors.find((f: any) => f.key.toUpperCase() === prefix);
+        const rawClass = floor?.bg_color_class || '';
+        const finalBorderClass = rawClass ? rawClass.replace('text-', 'border-') : 'border-brand-muted';
+
+        const roomNameUpper = room.name.toUpperCase();
+        const config = { label: roomNameUpper, color: finalBorderClass };
+        finalRoomConfig[room.id] = config;
+        finalRoomConfig[roomNameUpper] = config;
+      });
+
+      setBookings(apiBookings);
+      setRooms(apiRooms);
+      setRoomConfigs(finalRoomConfig);
+
+    } catch (err) {
+      setToast({ msg: "Veri yükleme hatası!", type: 'error' });
+    } finally {
+      setLoading(false);
+    }
   };
-        });
-
-        setBookings(apiBookings);
-        setRooms(apiRooms);
-
-        setRoomConfigs(finalRoomConfig);
-
-      } catch (err) {
-        setToast({ msg: "Veri yükleme hatası!", type: 'error' });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  fetchData();
+}, []);
 
   const groupedBookings = useMemo(() => {
     const today = new Date();
@@ -156,29 +152,21 @@ const apiFloors = fRes.data ?? [];
 
   return (
     <div className="min-h-screen bg-brand-surface px-4 pt-2 pb-12 font-brand">
-      
       {/* TOASTER UI */}
       {toast && (
         <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[300] animate-in fade-in slide-in-from-top-10 duration-500">
-          <div className={`
-            flex items-center gap-4 px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2
-            ${toast.type === 'error' ? 'bg-white border-brand-danger' : 'bg-white border-brand-primary'}
-          `}>
-            <div className={`
-              w-8 h-8 rounded-full flex items-center justify-center font-black text-sm
-              ${toast.type === 'error' ? 'bg-brand-danger text-white' : 'bg-brand-primary text-white'}
-            `}>
+          <div className={`flex items-center gap-4 px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2 ${toast.type === 'error' ? 'bg-white border-brand-danger' : 'bg-white border-brand-primary'}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${toast.type === 'error' ? 'bg-brand-danger text-white' : 'bg-brand-primary text-white'}`}>
               {toast.type === 'error' ? '!' : '✓'}
             </div>
-            <p className="font-black text-brand-secondary text-sm uppercase tracking-tight italic whitespace-nowrap">
-              {toast.msg}
-            </p>
+            <p className="font-black text-brand-secondary text-sm uppercase tracking-tight italic whitespace-nowrap">{toast.msg}</p>
             <div className="w-[2px] h-4 bg-brand-surface mx-2" />
             <button onClick={() => setToast(null)} className="text-brand-muted hover:text-brand-secondary font-black text-sm px-2">KAPAT</button>
           </div>
         </div>
       )}
 
+      {/* HEADER & FILTER */}
       <div className="max-w-7xl mx-auto mb-6 border-b-2 border-brand-surface pb-1 flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-black text-brand-secondary uppercase italic">Ops <span className="text-brand-primary">Planning</span></h1>
@@ -228,6 +216,7 @@ const apiFloors = fRes.data ?? [];
         )}
       </div>
 
+      {/* LISTING */}
       <div className="max-w-7xl mx-auto pb-20 space-y-3">
         {Object.entries(groupedBookings).map(([date, dayBookings]) => {
           const isDayExpanded = !!expandedDays[date];
@@ -248,7 +237,11 @@ const apiFloors = fRes.data ?? [];
               <div className={`${isDayExpanded ? 'block' : 'hidden'} p-4 pt-0 space-y-3 border-t border-brand-surface`}>
                 {Object.entries(bookingsByRoom).sort(([a], [b]) => a.localeCompare(b, 'tr', { numeric: true })).map(([roomName, roomBookings]) => {
                   const roomKey = `${date}-${roomName}`;
-                  const config = roomConfigs[roomName.toUpperCase()] || { label: roomName, color: 'border-brand-muted' };
+                  
+                  // KRİTİK DÜZELTME: Önce ID ile config'e bakıyoruz
+                  const firstBooking = roomBookings[0];
+                  const roomId = firstBooking?.room?.id || firstBooking?.room_id;
+                  const config = roomConfigs[roomId] || roomConfigs[roomName.toUpperCase()] || { label: roomName, color: 'border-brand-muted' };
 
                   return (
                     <div key={roomName} className={`border-l-4 ${config.color} bg-brand-surface/20 rounded-ini overflow-hidden mt-3`}>
@@ -267,7 +260,7 @@ const apiFloors = fRes.data ?? [];
                               </span>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => { setEditingBooking(b); setEditForm({ title: b.title,room_id: String(b.room?.id || b.room_id || ''), start_date: b.start_time.slice(0, 10), end_date: b.end_time.slice(0, 10), start_slot: b.start_time.includes('08:30') ? 'morning' : 'afternoon', end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' }); }} className="p-1 text-[10px] hover:scale-110">✏️</button>
+                              <button onClick={() => { setEditingBooking(b); setEditForm({ title: b.title, room_id: String(b.room?.id || b.room_id || ''), start_date: b.start_time.slice(0, 10), end_date: b.end_time.slice(0, 10), start_slot: b.start_time.includes('08:30') ? 'morning' : 'afternoon', end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' }); }} className="p-1 text-[10px] hover:scale-110">✏️</button>
                               <button onClick={() => handleDelete(b.id)} className="p-1 text-[10px] hover:scale-110">🗑️</button>
                             </div>
                           </div>

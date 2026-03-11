@@ -13,11 +13,10 @@ public function index()
 {
     return response()->json([
         'success' => true,
-        // 'with("type")' ekleyerek her ayarın hangi kategoriye ait olduğunu da çekiyoruz
-        'data' => LookupValue::with('type')->get()
+        // Eager Loading: LookupValue ile birlikte ona bağlı Type verisini de getir
+        'data' => \App\Models\LookupValue::with('type')->get()
     ]);
 }
-
     public function getNavigation()
     {
         $navigation = LookupValue::whereHas('type', function ($query) {
@@ -49,7 +48,16 @@ public function update(Request $request, $id)
         if ($request->has('key')) {
             $setting->key = $request->input('key');
         }
-
+        if ($request->has('bg_color_class')) {
+            $rawColor = $request->input('bg_color_class');
+            
+            // Eğer veri "bg-blue-100 text-blue-700" şeklinde gelirse 
+            // sadece "bg-blue-100" kısmını alır.
+            $cleanColor = explode(' ', trim($rawColor))[0];
+            
+            $setting->bg_color_class = $cleanColor;
+        }
+        
         if ($request->has('metadata')) {
             // Metadata sütunu modelde 'array' veya 'json' olarak cast edilmiş olmalı
             $setting->metadata = $request->input('metadata');
