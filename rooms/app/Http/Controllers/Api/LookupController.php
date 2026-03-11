@@ -9,13 +9,14 @@ use Illuminate\Http\Request;
 class LookupController extends Controller
 {
     // Settings.tsx'in GET isteği attığı metod (Az önce eksik olan buydu)
-    public function index() 
-    {
-        return response()->json([
-            'success' => true,
-            'data' => LookupValue::all()
-        ]);
-    }
+public function index() 
+{
+    return response()->json([
+        'success' => true,
+        // 'with("type")' ekleyerek her ayarın hangi kategoriye ait olduğunu da çekiyoruz
+        'data' => LookupValue::with('type')->get()
+    ]);
+}
 
     public function getNavigation()
     {

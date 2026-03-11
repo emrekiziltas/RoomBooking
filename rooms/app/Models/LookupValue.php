@@ -27,11 +27,17 @@ class LookupValue extends Model
         'is_active' => 'boolean',
         'sort_order' => 'integer',
     ];
-
+/*
     public function type(): BelongsTo
     {
         return $this->belongsTo(LookupType::class, 'type_id');
-    }
+    }*/
+
+    public function type()
+{
+    // type_id sütunu üzerinden LookupType modeline bağlanır
+    return $this->belongsTo(\App\Models\LookupType::class, 'type_id');
+}
 
     public function parent(): BelongsTo
     {

@@ -1,138 +1,171 @@
 import { useEffect, useState } from "react";
 import api from "../api/axios";
 
+// Tip tanımlamaları
 interface SettingItem {
   id: number;
   label: string;
   key: string;
   metadata: any;
-  type_id?: number;
+  type_id: number;
+  type?: {
+    id: number;
+    label: string;
+  };
 }
 
 export function Settings() {
-  const [settings, setSettings] = useState<SettingItem[]>([]);
+  const [groupedSettings, setGroupedSettings] = useState<Record<string, SettingItem[]>>({});
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
 
   const fetchSettings = async () => {
     setLoading(true);
     try {
       const res = await api.get("/settings");
       const data = res.data.success ? res.data.data : res.data;
+      
       if (Array.isArray(data)) {
-        setSettings(data);
+        const groups = data.reduce((acc: any, item: SettingItem) => {
+          // Senin JSON verindeki başlık "type.label"
+          const typeName = item.type?.label || "General Settings";
+          if (!acc[typeName]) acc[typeName] = [];
+          acc[typeName].push(item);
+          return acc;
+        }, {});
+        
+        setGroupedSettings(groups);
+        
+        // İlk grubu açık başlat
+        const keys = Object.keys(groups);
+        if (keys.length > 0) setExpandedTypes({ [keys[0]]: true });
       }
     } catch (err) {
-      console.error("Ayarlar yüklenirken hata oluştu:", err);
+      console.error("Hata:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  useEffect(() => { fetchSettings(); }, []);
+
+  const toggleType = (typeName: string) => {
+    setExpandedTypes(prev => ({ ...prev, [typeName]: !prev[typeName] }));
+  };
+
+  // Metadata içeriğini okumak için yardımcı fonksiyon
+  const getMetaValue = (meta: any) => {
+    if (!meta) return "";
+    if (typeof meta === 'string') {
+        try {
+            const parsed = JSON.parse(meta);
+            return parsed.value || meta;
+        } catch { return meta; }
+    }
+    return meta.value || JSON.stringify(meta);
+  };
 
   const handleUpdate = async (item: SettingItem) => {
     setUpdatingId(item.id);
-
-    // 1. Inputlardan güncel değerleri al
-    const labelVal = (document.getElementById(`label-${item.id}`) as HTMLInputElement).value;
-    const keyVal = (document.getElementById(`key-${item.id}`) as HTMLInputElement).value;
-    const metaVal = (document.getElementById(`meta-${item.id}`) as HTMLInputElement).value;
-
-    // 2. Metadata objesini hazırla
-    const finalMeta = (item.metadata && typeof item.metadata === 'object') 
-      ? { ...item.metadata, value: metaVal } 
-      : { value: metaVal };
-
-    const payload = {
-      label: labelVal,
-      key: keyVal,
-      metadata: finalMeta
-    };
-
-    console.log("🚀 API'ye Giden Veri (Payload):", payload);
-
     try {
-      const response = await api.put(`/settings/${item.id}`, payload);
-      console.log("✅ Backend Yanıtı:", response.data);
+      const labelInput = document.getElementById(`label-${item.id}`) as HTMLInputElement;
+      const keyInput = document.getElementById(`key-${item.id}`) as HTMLInputElement;
+      const metaInput = document.getElementById(`meta-${item.id}`) as HTMLInputElement;
 
-      // 3. Başarılıysa Local State'i güncelle (Arayüz yenilenir)
-      setSettings(prev => 
-        prev.map(s => s.id === item.id 
-          ? { ...s, label: labelVal, key: keyVal, metadata: finalMeta } 
-          : s
-        )
-      );
+      const payload: any = { 
+        label: labelInput.value, 
+        key: keyInput.value 
+      };
 
-      alert("DB Başarıyla Güncellendi ✓");
+      // Eğer metadata inputu varsa payload'a ekle
+      if (metaInput) {
+        payload.metadata = (item.metadata && typeof item.metadata === 'object') 
+          ? { ...item.metadata, value: metaInput.value } 
+          : { value: metaInput.value };
+      }
+
+      await api.put(`/settings/${item.id}`, payload); 
+      alert("Saved Successfully!");
     } catch (err) {
-      console.error("❌ Güncelleme hatası:", err);
-      alert("Hata oluştu! Console loglarına bakınız.");
+      alert("Update Failed!");
     } finally {
       setUpdatingId(null);
     }
   };
 
-  if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-brand-surface font-brand uppercase italic font-black animate-pulse text-slate-400">
-      Syncing System Data...
-    </div>
-  );
+  if (loading) return <div className="p-10 text-center font-black animate-pulse">LOADING ENGINE...</div>;
 
   return (
     <div className="min-h-screen bg-brand-surface p-8 font-brand">
-      <div className="max-w-7xl mx-auto mb-10 border-b-2 border-slate-100 pb-6 flex justify-between items-end">
-        <div>
-          <h1 className="text-4xl font-black text-brand-secondary uppercase tracking-tighter italic">
-            Global <span className="text-brand-primary">Settings</span>
-          </h1>
-          <p className="text-slate-400 font-black text-[9px] tracking-[0.4em] uppercase mt-3 italic">Live Database Management</p>
-        </div>
+      <div className="max-w-7xl mx-auto mb-10 border-b-2 border-slate-100 pb-6">
+        <h1 className="text-4xl font-black text-brand-secondary uppercase italic">System <span className="text-brand-primary">Engine</span></h1>
       </div>
 
-      <div className="max-w-7xl mx-auto bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl shadow-slate-200/50 overflow-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-black uppercase text-slate-400">
-              <th className="px-8 py-6">ID</th>
-              <th className="px-8 py-6">Wording / Label</th>
-              <th className="px-8 py-6">System Key</th>
-              <th className="px-8 py-6">Value (Meta)</th>
-              <th className="px-8 py-6 text-right">Operation</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {settings.map((item) => (
-              <tr key={item.id} className="group hover:bg-brand-primary/5 transition-all italic font-bold">
-                <td className="px-8 py-5 text-slate-300 font-mono text-xs">#{item.id}</td>
-                <td className="px-8 py-5">
-                  <input id={`label-${item.id}`} defaultValue={item.label} className="w-full border-2 border-slate-100 rounded-xl px-4 py-2 focus:border-brand-primary outline-none" />
-                </td>
-                <td className="px-8 py-5">
-                  <input id={`key-${item.id}`} defaultValue={item.key} className="w-full border-none bg-transparent text-xs font-mono text-slate-400 outline-none focus:text-brand-primary" />
-                </td>
-                <td className="px-8 py-5">
-                  <input 
-                    id={`meta-${item.id}`} 
-                    defaultValue={item.metadata?.value || (typeof item.metadata === 'string' ? item.metadata : "")} 
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 text-xs font-black text-brand-primary outline-none" 
-                  />
-                </td>
-                <td className="px-8 py-5 text-right">
-                  <button 
-                    onClick={() => handleUpdate(item)} 
-                    disabled={updatingId === item.id}
-                    className="bg-brand-secondary text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase hover:bg-brand-primary transition-all disabled:opacity-30"
-                  >
-                    {updatingId === item.id ? "COMMITING..." : "COMMIT UPDATE"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="max-w-7xl mx-auto space-y-4">
+        {Object.entries(groupedSettings).map(([typeName, items]) => {
+          // Sadece "System Settings" grubunda Metadata görünsün
+          const isSystemSetting = typeName === "System Settings";
+
+          return (
+            <div key={typeName} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              <button 
+                onClick={() => toggleType(typeName)}
+                className="w-full px-8 py-5 flex items-center justify-between bg-slate-50/50 hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="bg-brand-primary text-white text-[10px] px-2 py-1 rounded italic font-black">{items.length}</span>
+                  <h2 className="text-lg font-black uppercase italic text-slate-700">{typeName}</h2>
+                </div>
+                <span className={`transform transition-transform ${expandedTypes[typeName] ? 'rotate-180' : ''}`}>▼</span>
+              </button>
+
+              <div className={`transition-all ${expandedTypes[typeName] ? 'block' : 'hidden'}`}>
+                <div className="p-4 overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="text-[10px] font-black uppercase text-slate-400 border-b border-slate-50">
+                        <th className="px-6 py-4">Key</th>
+                        <th className="px-6 py-4">Label</th>
+                        {isSystemSetting && <th className="px-6 py-4">Value (Metadata)</th>}
+                        <th className="px-6 py-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-bold italic">
+                      {items.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/50">
+                          <td className="px-6 py-4">
+                            <input id={`key-${item.id}`} defaultValue={item.key} className="bg-transparent border-b border-transparent focus:border-brand-primary outline-none w-full text-slate-400 font-mono text-xs" />
+                          </td>
+                          <td className="px-6 py-4">
+                            <input id={`label-${item.id}`} defaultValue={item.label} className="bg-transparent border-b border-transparent focus:border-brand-primary outline-none w-full" />
+                          </td>
+                          {isSystemSetting && (
+                            <td className="px-6 py-4">
+                              <input 
+                                id={`meta-${item.id}`} 
+                                defaultValue={getMetaValue(item.metadata)}
+                                className="w-full bg-slate-100 rounded px-3 py-1 text-xs font-black text-brand-primary outline-none" 
+                              />
+                            </td>
+                          )}
+                          <td className="px-6 py-4 text-right">
+                            <button 
+                              onClick={() => handleUpdate(item)} 
+                              className="bg-brand-secondary text-white px-4 py-1.5 rounded-lg text-[10px] font-black uppercase hover:bg-brand-primary transition-all"
+                            >
+                              {updatingId === item.id ? "..." : "SAVE"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
