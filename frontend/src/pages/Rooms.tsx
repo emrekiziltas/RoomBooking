@@ -206,7 +206,7 @@ const loadFloors = async () => {
       )}
 
       <div className="max-w-7xl mx-auto mb-8 border-b-2 border-brand-surface pb-1">
-        <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic">Resource <span className="text-brand-primary">Management</span></h1>
+        <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic">Room <span className="text-brand-primary">Management</span></h1>
         <p className="text-brand-muted font-black uppercase text-[9px] tracking-[0.3em]">SYSTEM CONTROL PANEL & CAPACITY</p>
       </div>
 

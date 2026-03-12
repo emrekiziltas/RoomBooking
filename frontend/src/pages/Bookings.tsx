@@ -120,8 +120,8 @@ const groupedBookings = useMemo(() => {
     .forEach(key => {
       // Gösterim için güzel tarih formatına çevir (12 Mart Perşembe gibi)
       const [y, m, d] = key.split('-').map(Number);
-      const label = new Date(y, m - 1, d).toLocaleDateString('tr-TR', { 
-        day: '2-digit', month: 'long', weekday: 'long' 
+      const label = new Date(y, m - 1, d).toLocaleDateString('en-GB', { 
+        day: '2-digit', month: 'long', year:'numeric' , weekday: 'long' 
       });
       sortedGroups[label] = groups[key];
     });

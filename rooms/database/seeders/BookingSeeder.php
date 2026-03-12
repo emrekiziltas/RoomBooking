@@ -10,60 +10,58 @@ use Faker\Factory as Faker;
 class BookingSeeder extends Seeder
 {
     public function run(): void
-{
-    DB::table('bookings')->truncate();
+    {
+        DB::table('bookings')->truncate();
 
-    $rooms = DB::table('rooms')->get();
-    $users = DB::table('users')->pluck('id')->toArray();
+        $rooms = DB::table('rooms')->get();
+        $users = DB::table('users')->pluck('id')->toArray();
+        $faker = Faker::create('en_GB');
+        $bookings = [];
 
-    $colors = [
-        '#3B82F6', '#10B981', '#F97316',
-    ];
+        // -7 günden başla, +14 güne kadar git
+        for ($day = -7; $day <= 14; $day++) {
+            $startDate = Carbon::today()->addDays($day);
 
-    $bookings = [];
+            // Hafta sonu başlangıçlı rezervasyon yapmayalım
+            if ($startDate->isWeekend()) continue;
 
-    $faker = Faker::create('en_GB');
+            foreach ($rooms as $room) {
+                // Her gün her oda için %30 ihtimalle çoklu gün rezervasyonu başlasın
+                if (rand(1, 100) > 30) continue;
 
-    for ($day = -7; $day <= 14; $day++) {
-        $date = Carbon::today()->addDays($day);
-
-        if ($date->isWeekend()) continue;
-
-        foreach ($rooms as $room) {
-            // Her oda için rastgele 0-2 slot dolu olsun
-            $slots = [
-                //['start' => '08:30:00', 'end' => '12:30:00'],
-                //['start' => '12:30:00', 'end' => '16:30:00'],
-                ['start' => '08:30:00', 'end' => '16:30:00'],
-            ];
-            
-            foreach ($slots as $slot) {
-                // Kapasite kadar booking ekle (rastgele)
-                $bookingCount = rand(0, $room->capacity);
-
-                for ($i = 0; $i < $bookingCount; $i++) {
-                    $userId = $users[array_rand($users)];
-                    $prefix = $room->name[0];
-                    $color = $prefix === 'F' ? '#3B82F6' : ($prefix === 'M' ? '#10B981' : '#F97316');
-
-                    $bookings[] = [
-                        'room_id'    => $room->id,
-                        'user_id'    => $userId,
-                        'title'      => $faker->name() ,
-                        'start_time' => $date->format('Y-m-d') . ' ' . $slot['start'],
-                        'end_time'   => $date->format('Y-m-d') . ' ' . $slot['end'],
-                        'color'      => $color,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-                }
-            }
+                $userId = $users[array_rand($users)];
                 
+                // RASTGELE SÜRE: 1 ile 4 gün arasında sürsün
+                $durationDays = rand(1, 4); 
+                $endDate = $startDate->copy()->addDays($durationDays);
 
+                // Eğer bitiş hafta sonuna denk gelirse Cuma gününe çekelim (opsiyonel)
+                if ($endDate->isWeekend()) {
+                    $endDate = $startDate->copy()->next(Carbon::FRIDAY);
+                }
+
+                $prefix = $room->name[0];
+                $color = $prefix === 'F' ? '#3B82F6' : ($prefix === 'M' ? '#10B981' : '#F97316');
+
+                $bookings[] = [
+                    'room_id'    => $room->id,
+                    'user_id'    => $userId,
+                    'title'      => $faker->name(),
+                    'start_time' => $startDate->format('Y-m-d') . ' 08:30:00',
+                    'end_time'   => $endDate->format('Y-m-d') . ' 16:30:00',
+                    'color'      => $color,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
         }
-    }
 
-    DB::table('bookings')->insert($bookings);
-    $this->command->info(count($bookings) . ' booking oluşturuldu.');
-}
+        // Toplu insert (Performans için)
+        $chunks = array_chunk($bookings, 100);
+        foreach ($chunks as $chunk) {
+            DB::table('bookings')->insert($chunk);
+        }
+
+        $this->command->info(count($bookings) . ' adet (bazıları çoklu gün) booking oluşturuldu.');
+    }
 }
