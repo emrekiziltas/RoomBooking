@@ -79,24 +79,55 @@ useEffect(() => {
   fetchData();
 }, []);
 
-  const groupedBookings = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const filtered = selectedRoomId === 'all' ? bookings : bookings.filter(b => String(b.room_id || b.room?.id) === selectedRoomId);
-    const groups: Record<string, Booking[]> = {};
+const groupedBookings = useMemo(() => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-    [...filtered]
-      .filter(b => new Date(b.start_time) >= today)
-      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
-      .forEach(booking => {
-        const dateStr = booking.start_time.slice(0, 10);
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const dateLabel = new Date(y, m - 1, d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', weekday: 'long' });
-        if (!groups[dateLabel]) groups[dateLabel] = [];
-        groups[dateLabel].push(booking);
+  const filtered = selectedRoomId === 'all' 
+    ? bookings 
+    : bookings.filter(b => String(b.room_id || b.room?.id) === selectedRoomId);
+
+  const groups: Record<string, Booking[]> = {};
+
+  filtered.forEach(booking => {
+    let current = new Date(booking.start_time);
+    const end = new Date(booking.end_time);
+    
+    current.setHours(0, 0, 0, 0);
+    const endLimit = new Date(end);
+    endLimit.setHours(0, 0, 0, 0);
+
+    while (current <= endLimit) {
+      if (current >= today) {
+        // Sıralama yapabilmek için tarihi bir ID (YYYY-MM-DD) olarak saklayacağız
+        const dateId = current.toISOString().split('T')[0];
+        
+        if (!groups[dateId]) groups[dateId] = [];
+        if (!groups[dateId].find(b => b.id === booking.id)) {
+          groups[dateId].push(booking);
+        }
+      }
+      current.setDate(current.getDate() + 1);
+    }
+  });
+
+  // SIRALAMA BURADA BAŞLIYOR:
+  const sortedGroups: Record<string, Booking[]> = {};
+  
+  // Anahtarları (2026-03-12 gibi) al ve alfabetik sırala (tarih formatında bu kronolojik sıradır)
+  Object.keys(groups)
+    .sort() 
+    .forEach(key => {
+      // Gösterim için güzel tarih formatına çevir (12 Mart Perşembe gibi)
+      const [y, m, d] = key.split('-').map(Number);
+      const label = new Date(y, m - 1, d).toLocaleDateString('tr-TR', { 
+        day: '2-digit', month: 'long', weekday: 'long' 
       });
-    return groups;
-  }, [bookings, selectedRoomId]);
+      sortedGroups[label] = groups[key];
+    });
+
+  return sortedGroups;
+}, [bookings, selectedRoomId]);
 
   const handleCreate = async () => {
     if (!form.room_id || !form.title) { 
