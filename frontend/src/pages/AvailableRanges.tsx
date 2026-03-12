@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { getAvailableRanges, getFloors } from '../api/rooms';
 import { createBooking } from '../api/bookings';
+import { PageHeader } from "../components/PageHeader";
 
 export function AvailableRanges() {
   const [ranges, setRanges] = useState<any[]>([]);
@@ -14,7 +15,6 @@ export function AvailableRanges() {
   const [bookingPayload, setBookingPayload] = useState<any>(null);
   const [expandedFloors, setExpandedFloors] = useState<Record<string, boolean>>({});
 
-  // TOAST OTOMATİK KAPATMA
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 4000);
@@ -22,7 +22,6 @@ export function AvailableRanges() {
     }
   }, [toast]);
 
-  // KAT BİLGİLERİNİ ÇEK (LookupValues - Colors vs.)
   const loadFloors = async () => {
     try {
       const response = await getFloors();
@@ -31,7 +30,8 @@ export function AvailableRanges() {
       apiFloors.forEach((f: any) => {
         config[f.key.toUpperCase()] = {
           label: f.label.toUpperCase(),
-          color: f.bg_color_class || 'text-brand-muted'
+          color: f.bg_color_class || 'text-brand-muted',
+          bg: f.active_bg_class || 'bg-brand-surface'
         };
       });
       setFloors(config);
@@ -40,7 +40,6 @@ export function AvailableRanges() {
     }
   };
 
-  // UYGUN ARALIKLARI ÇEK
   const fetchRanges = async () => {
     setLoading(true);
     try {
@@ -53,13 +52,11 @@ export function AvailableRanges() {
     }
   };
 
-  // SAYFA İLK AÇILDIĞINDA ÇALIŞTIR
   useEffect(() => {
     loadFloors();
     fetchRanges();
   }, []);
 
-  // VERİYİ KATLARA GÖRE GRUPLA (Ana Mantık Korundu)
   const groupedRanges = useMemo(() => {
     const rawData = Array.isArray(ranges) ? ranges : [];
     if (rawData.length === 0) return {};
@@ -78,7 +75,6 @@ export function AvailableRanges() {
       }, {} as Record<string, any[]>);
   }, [ranges]);
 
-  // İLK KATI OTOMATİK AÇ (Sonsuz döngü engellendi)
   useEffect(() => {
     const keys = Object.keys(groupedRanges).sort();
     if (keys.length > 0 && Object.keys(expandedFloors).length === 0) {
@@ -86,7 +82,6 @@ export function AvailableRanges() {
     }
   }, [groupedRanges]);
 
-  // REZERVASYON KAYDETME
   const handleBookingSubmit = async () => {
     if (!bookingPayload?.title) return;
     setSubmitting(true);
@@ -100,7 +95,7 @@ export function AvailableRanges() {
       });
       setIsModalOpen(false);
       setToast({ message: 'SEQUENCE COMMITTED ✓', type: 'success' });
-      fetchRanges(); // Listeyi güncelle
+      fetchRanges();
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'ACTION FAILED';
       setToast({ message: errorMsg.toUpperCase(), type: 'error' });
@@ -110,7 +105,7 @@ export function AvailableRanges() {
   };
 
   return (
-    <div className="min-h-screen bg-brand-surface p-4 md:p-8 font-brand text-brand-secondary">
+    <div className="min-h-screen bg-brand-surface font-brand">
       
       {/* TOASTER */}
       {toast && (
@@ -126,126 +121,154 @@ export function AvailableRanges() {
         </div>
       )}
 
-      {/* SEARCH HEADER */}
-      <div className="max-w-7xl mx-auto mb-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b-2 border-brand-surface pb-6">
-          <div className="flex-shrink-0">
-            <h1 className="text-3xl font-black text-brand-secondary uppercase italic leading-none">
-              Range <span className="text-brand-primary">Planning</span>
-            </h1>
-            <p className="text-brand-muted text-[10px] font-black uppercase tracking-[0.3em] mt-1">Resource Control & Dynamic Scheduling</p>
+      {/* HEADER SECTION - Diğer sayfalarla tam uyumlu */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
+          <div className="flex-1 w-full">
+            <PageHeader highlight="RANGE" title="PLANNING" />
           </div>
 
-          <div className="flex flex-wrap md:flex-nowrap items-end gap-3 bg-white p-2 rounded-ini shadow-sm border border-brand-surface">
-            <div className="flex-1 min-w-[140px] space-y-1">
-              <label className="text-[8px] font-black uppercase text-brand-muted ml-2 tracking-tighter">Initial Date</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-brand-surface rounded-ini font-black text-[11px] outline-none focus:ring-2 ring-brand-primary transition-all" />
+          <div className="flex flex-wrap items-end gap-2 pb-[2px] mt-4 md:mt-0">
+            <div className="flex bg-white p-1 rounded-ini border border-brand-surface shadow-sm gap-2">
+              <div className="flex flex-col px-2">
+                <span className="text-[7px] font-black text-brand-muted uppercase">Start Date</span>
+                <input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={(e) => setStartDate(e.target.value)} 
+                  className="bg-transparent font-black text-[10px] outline-none uppercase" 
+                />
+              </div>
+              <div className="w-[1px] h-6 bg-brand-surface my-auto" />
+              <div className="flex flex-col px-2">
+                <span className="text-[7px] font-black text-brand-muted uppercase">Cycle</span>
+                <input 
+                  type="number" 
+                  value={days} 
+                  onChange={(e) => setDays(Number(e.target.value))} 
+                  className="bg-transparent font-black text-[10px] outline-none w-8 text-center" 
+                />
+              </div>
             </div>
-            <div className="w-24 space-y-1">
-              <label className="text-[8px] font-black uppercase text-brand-muted ml-2 tracking-tighter">Cycle Days</label>
-              <input type="number" value={days} onChange={(e) => setDays(Number(e.target.value))} className="w-full px-3 py-2 bg-brand-surface rounded-ini font-black text-[11px] outline-none focus:ring-2 ring-brand-primary transition-all text-center" />
-            </div>
-            <div className="flex-shrink-0">
-              <button onClick={fetchRanges} disabled={loading} className="px-6 py-2.5 bg-brand-secondary text-white rounded-ini font-black uppercase text-[10px] tracking-widest hover:bg-brand-primary transition-all shadow-md active:scale-95 disabled:opacity-50">
-                {loading ? 'ANALYZING...' : 'EXECUTE SEARCH'}
-              </button>
-            </div>
+
+            <button 
+              onClick={fetchRanges} 
+              disabled={loading} 
+              className="px-6 py-3 bg-brand-secondary text-white rounded-ini font-black uppercase text-[10px] tracking-widest hover:bg-brand-primary transition-all shadow-md active:scale-95 disabled:opacity-50"
+            >
+              {loading ? 'ANALYZING...' : 'EXECUTE'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* RESULTS GRID */}
-      <div className="max-w-7xl mx-auto">
+      {/* CONTENT SECTION - mt-8 ile ferahlatıldı */}
+      <div className="max-w-7xl mx-auto px-4 mt-8">
         {loading ? (
-          <div className="py-20 text-center font-black text-brand-muted text-[10px] tracking-[0.4em] uppercase">Scanning...</div>
+          <div className="py-20 text-center font-black text-brand-muted text-[10px] tracking-[0.4em] uppercase animate-pulse">Scanning Infrastructure...</div>
         ) : (
-          Object.keys(groupedRanges).sort().map((prefix) => {
-            const floor = floors[prefix] || { label: `${prefix} BLOCK`, color: 'text-brand-muted' };
-            const isExpanded = expandedFloors[prefix];
+          <div className="pb-20">
+            {Object.keys(groupedRanges).sort().map((prefix) => {
+              const floor = floors[prefix] || { label: `${prefix} BLOCK`, color: 'text-brand-muted' };
+              const isExpanded = expandedFloors[prefix];
 
-            return (
-              <div key={prefix} className="mb-8">
-                <button
-                  onClick={() => setExpandedFloors(p => ({ ...p, [prefix]: !p[prefix] }))}
-                  className="w-full flex items-center gap-4 mb-4 group"
-                >
-                  <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>{floor.label}</h2>
-                  <div className="flex-1 h-px bg-gray-200 group-hover:bg-brand-primary transition-colors" />
-                  <span className={`text-brand-muted text-[10px] transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
-                </button>
+              return (
+                <div key={prefix} className="mb-6">
+                  <button
+                    onClick={() => setExpandedFloors(p => ({ ...p, [prefix]: !p[prefix] }))}
+                    className="w-full flex items-center gap-4 mb-4 group"
+                  >
+                    <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>{floor.label}</h2>
+                    <div className="flex-1 h-px bg-brand-surface group-hover:bg-brand-primary transition-colors" />
+                    <span className={`text-brand-muted text-[10px] transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                  </button>
 
-                {isExpanded && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {groupedRanges[prefix].map((item: any) => {
-                      const hasRange = item.filteredRanges && item.filteredRanges.length > 0;
-                      return (
-                        <div 
-                          key={item.id} 
-                          onClick={() => {
-                            if (!hasRange) return;
-                            const range = item.filteredRanges[0];
-                            setBookingPayload({ 
-                              roomId: item.id, 
-                              roomName: item.name, 
-                              start: range.start, 
-                              end: range.end, 
-                              title: '' 
-                            });
-                            setIsModalOpen(true);
-                          }}
-                          className={`bg-white p-3 rounded-ini border border-brand-surface shadow-sm transition-all group ${hasRange ? 'hover:border-brand-primary cursor-pointer hover:shadow-md' : 'opacity-60 cursor-not-allowed'}`}
-                        >
-                          <div className="flex justify-between items-start mb-6">
-                            <div>
-                              <h3 className={`font-black text-base ${floor.color} uppercase tracking-tighter`}>{item.name}</h3>
-                              <p className="text-[9px] font-black text-brand-muted uppercase italic">Cap: {item.capacity}</p>
+                  {isExpanded && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      {groupedRanges[prefix].map((item: any) => {
+                        const hasRange = item.filteredRanges && item.filteredRanges.length > 0;
+                        return (
+                          <div 
+                            key={item.id} 
+                            onClick={() => {
+                              if (!hasRange) return;
+                              const range = item.filteredRanges[0];
+                              setBookingPayload({ 
+                                roomId: item.id, 
+                                roomName: item.name, 
+                                start: range.start, 
+                                end: range.end, 
+                                title: '' 
+                              });
+                              setIsModalOpen(true);
+                            }}
+                            className={`ini-card p-4 transition-all group ${hasRange ? 'cursor-pointer hover:border-brand-primary bg-white' : 'opacity-40 cursor-not-allowed bg-brand-surface'}`}
+                          >
+                            <div className="flex justify-between items-start mb-6">
+                              <div>
+                                <h3 className={`font-black text-sm ${floor.color} uppercase tracking-tighter leading-none`}>{item.name}</h3>
+                                <p className="text-[8px] font-black text-brand-muted uppercase mt-1">Cap: {item.capacity}</p>
+                              </div>
+                              {hasRange && (
+                                <div className="text-[14px] text-brand-muted group-hover:text-brand-primary transition-colors">→</div>
+                              )}
                             </div>
-                            {hasRange && <div className="bg-brand-surface px-2 py-0.5 rounded text-[8px] font-black text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-colors uppercase">Select</div>}
+                            
+                            {hasRange ? (
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center text-[9px] font-black text-brand-secondary bg-brand-surface p-2 rounded-sm">
+                                  <span>{item.filteredRanges[0].start.split(' ')[0].split('-').slice(1).reverse().join('/')}</span>
+                                  <span className="text-brand-muted opacity-30">/</span>
+                                  <span>{item.filteredRanges[0].end.split(' ')[0].split('-').slice(1).reverse().join('/')}</span>
+                                </div>
+                                <div className="flex justify-center">
+                                  <span className="text-[7px] font-black bg-brand-primary/10 text-brand-primary px-2 py-1 rounded-full uppercase tracking-widest">
+                                    {item.filteredRanges[0].days} DAYS SEQ
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-[8px] font-black text-center text-brand-muted py-2 uppercase italic tracking-widest">Unavailable</div>
+                            )}
                           </div>
-                          
-                          {hasRange ? (
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-[10px] font-black">
-                                <span>{item.filteredRanges[0].start.split(' ')[0].split('-').reverse().join('/')}</span>
-                                <span className="text-brand-muted">→</span>
-                                <span>{item.filteredRanges[0].end.split(' ')[0].split('-').reverse().join('/')}</span>
-                              </div>
-                              <div className="pt-2 border-t border-brand-surface flex justify-center">
-                                <span className="text-[8px] font-black bg-brand-success text-white px-2 py-1 rounded-sm uppercase">
-                                  {item.filteredRanges[0].days} Days Seq
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-[8px] font-black text-center text-brand-muted bg-brand-surface py-2 rounded uppercase italic">No Match</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
-      {/* MODAL */}
+      {/* MODAL SECTION */}
       {isModalOpen && bookingPayload && (
-        <div className="fixed inset-0 flex items-center justify-center z-[1000] p-4">
-          <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="bg-white max-w-md w-full p-10 rounded-ini relative z-10 shadow-2xl">
-            <h2 className="text-2xl font-black text-brand-secondary uppercase italic text-center mb-8 tracking-tighter">Sequence Booking</h2>
+        <div className="fixed inset-0 flex items-center justify-center z-[2000] p-4">
+          <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsModalOpen(false)} />
+          <div className="ini-card max-w-sm w-full p-8 relative z-10 animate-in zoom-in-95 duration-200 bg-white">
+            <h2 className="text-xl font-black text-brand-secondary uppercase italic text-center mb-8 tracking-tighter">Confirm Sequence</h2>
             <div className="space-y-6">
               <div>
-                <label className="text-[9px] font-black uppercase text-brand-primary mb-2 block tracking-widest">Mission Title</label>
-                <input autoFocus type="text" value={bookingPayload.title} onChange={(e) => setBookingPayload({ ...bookingPayload, title: e.target.value })} placeholder="E.G. PROJECT X" className="w-full bg-brand-surface border-0 rounded px-5 py-4 font-black text-[11px] outline-none focus:ring-1 ring-brand-primary uppercase" />
+                <label className="text-[8px] font-black uppercase text-brand-primary mb-2 block tracking-widest">Mission Title</label>
+                <input 
+                  autoFocus 
+                  type="text" 
+                  value={bookingPayload.title} 
+                  onChange={(e) => setBookingPayload({ ...bookingPayload, title: e.target.value })} 
+                  placeholder="E.G. LONG TERM PROJECT" 
+                  className="w-full bg-brand-surface border-0 rounded-ini px-4 py-3 font-black text-[11px] outline-none focus:ring-1 ring-brand-primary uppercase transition-all" 
+                />
               </div>
-              <div className="flex gap-3">
-                <button disabled={submitting || !bookingPayload.title} onClick={handleBookingSubmit} className="flex-[2] bg-brand-secondary text-white py-4 rounded font-black uppercase text-[10px] hover:bg-brand-primary disabled:opacity-30 transition-all shadow-lg">
-                  {submitting ? 'EXECUTING...' : 'CONFIRM SEQUENCE'}
+              <div className="flex gap-2">
+                <button 
+                  disabled={submitting || !bookingPayload.title} 
+                  onClick={handleBookingSubmit} 
+                  className="flex-[2] bg-brand-secondary text-white py-4 rounded-ini font-black uppercase text-[10px] hover:bg-brand-primary disabled:opacity-30 transition-all shadow-lg active:scale-95"
+                >
+                  {submitting ? 'EXECUTING...' : 'COMMIT SEQ'}
                 </button>
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-brand-surface text-brand-muted py-4 rounded font-black uppercase text-[10px] hover:bg-gray-200">Abort</button>
+                <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-brand-surface text-brand-muted py-4 rounded-ini font-black uppercase text-[10px] hover:bg-gray-200 transition-colors">Abort</button>
               </div>
             </div>
           </div>

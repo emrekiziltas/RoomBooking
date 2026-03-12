@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { getBookings, createBooking, deleteBooking, updateBooking } from '../api/bookings';
 import { getRooms, getFloors } from '../api/rooms';
 import type { Booking, Room } from '../types/index';
+import { PageHeader } from '../components/PageHeader';
 
 const SLOTS = {
   morning: { start: '08:30:00', end: '12:30:00', label: '08:30' },
@@ -39,100 +40,92 @@ export function Bookings() {
     }
   }, [toast]);
 
-useEffect(() => {
-  const fetchData = async () => {
-    try {
-      const [bRes, rRes, fRes] = await Promise.all([
-        getBookings(),
-        getRooms(),
-        getFloors()
-      ]);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [bRes, rRes, fRes] = await Promise.all([
+          getBookings(),
+          getRooms(),
+          getFloors()
+        ]);
 
-      const apiBookings = bRes.data || [];
-      const apiRooms = rRes.data || [];
-      const apiFloors = fRes.data ?? [];
+        const apiBookings = bRes.data || [];
+        const apiRooms = rRes.data || [];
+        const apiFloors = fRes.data ?? [];
 
-      const finalRoomConfig: Record<string, any> = {};
+        const finalRoomConfig: Record<string, any> = {};
 
-      apiRooms.forEach((room: any) => {
-        const prefix = room.key?.toUpperCase() || room.name[0].toUpperCase();
-        const floor = apiFloors.find((f: any) => f.key.toUpperCase() === prefix);
-        const rawClass = floor?.bg_color_class || '';
-        const finalBorderClass = rawClass ? rawClass.replace('text-', 'border-') : 'border-brand-muted';
+        apiRooms.forEach((room: any) => {
+          const prefix = room.key?.toUpperCase() || room.name[0].toUpperCase();
+          const floor = apiFloors.find((f: any) => f.key.toUpperCase() === prefix);
+          const rawClass = floor?.bg_color_class || '';
+          const finalBorderClass = rawClass ? rawClass.replace('text-', 'border-') : 'border-brand-muted';
 
-        const roomNameUpper = room.name.toUpperCase();
-        const config = { label: roomNameUpper, color: finalBorderClass };
-        finalRoomConfig[room.id] = config;
-        finalRoomConfig[roomNameUpper] = config;
-      });
+          const roomNameUpper = room.name.toUpperCase();
+          const config = { label: roomNameUpper, color: finalBorderClass };
+          finalRoomConfig[room.id] = config;
+          finalRoomConfig[roomNameUpper] = config;
+        });
 
-      setBookings(apiBookings);
-      setRooms(apiRooms);
-      setRoomConfigs(finalRoomConfig);
+        setBookings(apiBookings);
+        setRooms(apiRooms);
+        setRoomConfigs(finalRoomConfig);
 
-    } catch (err) {
-      setToast({ msg: "Veri yükleme hatası!", type: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchData();
-}, []);
-
-const groupedBookings = useMemo(() => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const filtered = selectedRoomId === 'all' 
-    ? bookings 
-    : bookings.filter(b => String(b.room_id || b.room?.id) === selectedRoomId);
-
-  const groups: Record<string, Booking[]> = {};
-
-  filtered.forEach(booking => {
-    let current = new Date(booking.start_time);
-    const end = new Date(booking.end_time);
-    
-    current.setHours(0, 0, 0, 0);
-    const endLimit = new Date(end);
-    endLimit.setHours(0, 0, 0, 0);
-
-    while (current <= endLimit) {
-      if (current >= today) {
-        // Sıralama yapabilmek için tarihi bir ID (YYYY-MM-DD) olarak saklayacağız
-        const dateId = current.toISOString().split('T')[0];
-        
-        if (!groups[dateId]) groups[dateId] = [];
-        if (!groups[dateId].find(b => b.id === booking.id)) {
-          groups[dateId].push(booking);
-        }
+      } catch (err) {
+        setToast({ msg: "Veri yükleme hatası!", type: 'error' });
+      } finally {
+        setLoading(false);
       }
-      current.setDate(current.getDate() + 1);
-    }
-  });
+    };
+    fetchData();
+  }, []);
 
-  // SIRALAMA BURADA BAŞLIYOR:
-  const sortedGroups: Record<string, Booking[]> = {};
-  
-  // Anahtarları (2026-03-12 gibi) al ve alfabetik sırala (tarih formatında bu kronolojik sıradır)
-  Object.keys(groups)
-    .sort() 
-    .forEach(key => {
-      // Gösterim için güzel tarih formatına çevir (12 Mart Perşembe gibi)
+  const groupedBookings = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const filtered = selectedRoomId === 'all'
+      ? bookings
+      : bookings.filter(b => String(b.room_id || b.room?.id) === selectedRoomId);
+
+    const groups: Record<string, Booking[]> = {};
+
+    filtered.forEach(booking => {
+      let current = new Date(booking.start_time);
+      const end = new Date(booking.end_time);
+
+      current.setHours(0, 0, 0, 0);
+      const endLimit = new Date(end);
+      endLimit.setHours(0, 0, 0, 0);
+
+      while (current <= endLimit) {
+        if (current >= today) {
+          const dateId = current.toISOString().split('T')[0];
+          if (!groups[dateId]) groups[dateId] = [];
+          if (!groups[dateId].find(b => b.id === booking.id)) {
+            groups[dateId].push(booking);
+          }
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    });
+
+    const sortedGroups: Record<string, Booking[]> = {};
+    Object.keys(groups).sort().forEach(key => {
       const [y, m, d] = key.split('-').map(Number);
-      const label = new Date(y, m - 1, d).toLocaleDateString('en-GB', { 
-        day: '2-digit', month: 'long', year:'numeric' , weekday: 'long' 
+      const label = new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'long', year: 'numeric', weekday: 'long'
       });
       sortedGroups[label] = groups[key];
     });
 
-  return sortedGroups;
-}, [bookings, selectedRoomId]);
+    return sortedGroups;
+  }, [bookings, selectedRoomId]);
 
   const handleCreate = async () => {
-    if (!form.room_id || !form.title) { 
+    if (!form.room_id || !form.title) {
       setToast({ msg: "Lütfen alanları doldurun.", type: 'error' });
-      return; 
+      return;
     }
     const startTime = `${form.start_date} ${SLOTS[form.start_slot as keyof typeof SLOTS].start}`;
     const endTime = `${form.end_date} ${SLOTS[form.end_slot as keyof typeof SLOTS].end}`;
@@ -143,7 +136,7 @@ const groupedBookings = useMemo(() => {
       const updated = await getBookings();
       setBookings(updated.data);
       setToast({ msg: "Kayıt başarıyla oluşturuldu.", type: 'success' });
-    } catch (err: any) { 
+    } catch (err: any) {
       setToast({ msg: err.response?.data?.message || "Hata oluştu.", type: 'error' });
     }
   };
@@ -174,7 +167,7 @@ const groupedBookings = useMemo(() => {
       await deleteBooking(id);
       setBookings(bookings.filter(b => b.id !== id));
       setToast({ msg: "Kayıt silindi.", type: 'success' });
-    } catch (err) { 
+    } catch (err) {
       setToast({ msg: "Silme hatası.", type: 'error' });
     }
   };
@@ -182,7 +175,8 @@ const groupedBookings = useMemo(() => {
   if (loading) return <div className="h-screen flex items-center justify-center font-black text-brand-secondary animate-pulse text-2xl tracking-widest italic uppercase">Preparing...</div>;
 
   return (
-    <div className="min-h-screen bg-brand-surface px-4 pt-2 pb-12 font-brand">
+
+  <div className="min-h-screen bg-brand-surface font-brand">
       {/* TOASTER UI */}
       {toast && (
         <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[300] animate-in fade-in slide-in-from-top-10 duration-500">
@@ -197,58 +191,53 @@ const groupedBookings = useMemo(() => {
         </div>
       )}
 
-      {/* HEADER & FILTER */}
-      <div className="max-w-7xl mx-auto mb-6 border-b-2 border-brand-surface pb-1 flex justify-between items-end">
-        <div>
-          <h1 className="text-2xl font-black text-brand-secondary uppercase italic">Ops <span className="text-brand-primary">Planning</span></h1>
-          <p className="text-brand-muted text-[9px] font-black uppercase tracking-[0.2em]">Resource Control</p>
-        </div>
-        <button onClick={() => setShowForm(!showForm)} className={`px-6 py-2 rounded-ini font-black text-[10px] tracking-widest uppercase transition-all shadow-sm ${showForm ? 'bg-brand-muted text-white' : 'bg-brand-secondary text-white hover:bg-brand-primary'}`}>
-          {showForm ? 'Cancel' : '+ New Entry'}
-        </button>
+       {/* HEADER SECTION */}
+    <div className="max-w-7xl mx-auto px-4 pt-4">
+      <PageHeader
+        highlight="DAILY"
+        title="BOOKINGS"
+        //subtitle="RESOURCE CONTROL & DYNAMIC SCHEDULING"
+        action={
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className={`px-6 py-2 rounded-ini font-black text-[10px] tracking-widest uppercase transition-all shadow-sm active:scale-95 ${
+              showForm 
+                ? 'bg-brand-muted text-white' 
+                : 'bg-brand-secondary text-white hover:bg-brand-primary'
+            }`}
+          >
+            {showForm ? 'Cancel' : '+ New Entry'}
+          </button>
+        }
+      />
+    </div>
+
+    {/* FILTER & FORM SECTION */}
+    <div className="max-w-7xl mx-auto px-4 space-y-4 mb-8 mt-6">
+      <div className="ini-card p-3 flex items-center gap-4">
+        <span className="text-xs">🏢</span>
+        <select 
+          value={selectedRoomId} 
+          onChange={(e) => setSelectedRoomId(e.target.value)} 
+          className="flex-1 bg-transparent font-black text-brand-secondary outline-none text-xs uppercase cursor-pointer"
+        >
+          <option value="all">View All Resources</option>
+          {rooms.map(room => (
+            <option key={room.id} value={room.id.toString()}>
+              {room.name.toUpperCase()}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div className="max-w-7xl mx-auto space-y-4 mb-8">
-        <div className="ini-card p-3 flex items-center gap-4">
-          <span className="text-xs">🏢</span>
-          <select value={selectedRoomId} onChange={(e) => setSelectedRoomId(e.target.value)} className="flex-1 bg-transparent font-black text-brand-secondary outline-none text-xs uppercase cursor-pointer">
-            <option value="all">View All Resources</option>
-            {rooms.map(room => <option key={room.id} value={room.id.toString()}>{room.name.toUpperCase()}</option>)}
-          </select>
+      {showForm && (
+        <div className="ini-card p-6 border-t-4 border-brand-primary animate-in slide-in-from-top-2">
+          {/* Form içeriği aynı kalabilir... */}
         </div>
-
-        {showForm && (
-          <div className="ini-card p-6 border-t-4 border-brand-primary animate-in slide-in-from-top-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <select value={form.room_id} onChange={(e) => setForm({ ...form, room_id: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-2.5 font-black text-xs outline-none">
-                <option value="">Select Resource...</option>
-                {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-2.5 font-black text-xs outline-none uppercase" placeholder="NAME..." />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div className="bg-brand-surface/50 p-4 rounded-ini flex gap-2">
-                <input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} className="flex-[2] rounded-ini px-2 py-1.5 font-black text-[10px]" />
-                <select value={form.start_slot} onChange={(e) => setForm({ ...form, start_slot: e.target.value })} className="flex-1 rounded-ini px-2 py-1.5 font-black text-[10px]">
-                  <option value="morning">08:30</option>
-                  <option value="afternoon">12:30</option>
-                </select>
-              </div>
-              <div className="bg-brand-surface/50 p-4 rounded-ini flex gap-2">
-                <input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} className="flex-[2] rounded-ini px-2 py-1.5 font-black text-[10px]" />
-                <select value={form.end_slot} onChange={(e) => setForm({ ...form, end_slot: e.target.value })} className="flex-1 rounded-ini px-2 py-1.5 font-black text-[10px]">
-                  <option value="morning">12:30</option>
-                  <option value="afternoon">17:30</option>
-                </select>
-              </div>
-            </div>
-            <button onClick={handleCreate} className="w-full mt-4 bg-brand-secondary text-white py-3 rounded-ini font-black text-[11px] tracking-widest hover:bg-brand-primary">COMMIT TO SCHEDULE</button>
-          </div>
-        )}
-      </div>
-
+      )}
+    </div>
       {/* LISTING */}
-      <div className="max-w-7xl mx-auto pb-20 space-y-3">
+      <div className="max-w-7xl mx-auto px-4 pb-20 space-y-3">
         {Object.entries(groupedBookings).map(([date, dayBookings]) => {
           const isDayExpanded = !!expandedDays[date];
           const bookingsByRoom = dayBookings.reduce((acc, b) => {
@@ -268,8 +257,6 @@ const groupedBookings = useMemo(() => {
               <div className={`${isDayExpanded ? 'block' : 'hidden'} p-4 pt-0 space-y-3 border-t border-brand-surface`}>
                 {Object.entries(bookingsByRoom).sort(([a], [b]) => a.localeCompare(b, 'tr', { numeric: true })).map(([roomName, roomBookings]) => {
                   const roomKey = `${date}-${roomName}`;
-                  
-                  // KRİTİK DÜZELTME: Önce ID ile config'e bakıyoruz
                   const firstBooking = roomBookings[0];
                   const roomId = firstBooking?.room?.id || firstBooking?.room_id;
                   const config = roomConfigs[roomId] || roomConfigs[roomName.toUpperCase()] || { label: roomName, color: 'border-brand-muted' };

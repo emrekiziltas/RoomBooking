@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../api/axios";
+import { PageHeader } from "../components/PageHeader";
 
 const COLOR_GROUPS = [
-  "slate", "gray", "red", "orange", "amber", "yellow", "lime", 
+  "slate", "gray", "zinc", "red", "orange", "amber", "yellow", "lime", 
   "green", "emerald", "teal", "cyan", "sky", "blue", 
   "indigo", "violet", "purple", "fuchsia", "pink", "rose"
 ];
@@ -60,143 +61,135 @@ export function Settings() {
     try {
       await api.put(`/settings/${item.id}`, { label: labelVal, bg_color_class: dbFriendlyColor });
       fetchSettings();
-      alert("Kaydedildi!");
-    } catch (err) { alert("Hata!"); } finally { setUpdatingId(null); }
+    } catch (err) { alert("Action Failed!"); } finally { setUpdatingId(null); }
   };
 
-  if (loading) return <div className="p-20 text-center font-black animate-pulse text-slate-400 uppercase italic">Loading System...</div>;
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center font-brand font-black text-brand-secondary animate-pulse text-xl uppercase tracking-widest">
+      Accessing System Core...
+    </div>
+  );
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-10">
-      {/* 1. ÜST HEADER: MARKA KİMLİĞİ */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b-2 border-brand-surface pb-6">
-        <div className="flex-shrink-0">
-          <h1 className="text-3xl font-black text-brand-secondary uppercase italic leading-none">
-             * <span className="text-brand-primary">Settings</span>
-          </h1>
-          <p className="text-brand-muted text-[10px] font-black uppercase tracking-[0.3em] mt-1">
-            Resource Control & Dynamic Scheduling
-          </p>
+    <div className="min-h-screen bg-brand-surface font-brand">
+      
+      {/* 1. HEADER SECTION */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
+          <div className="flex-1 w-full">
+            <PageHeader highlight="SYSTEM" title="SETTINGS" />
+          </div>
+          <div className="pb-[2px] mt-4 md:mt-0">
+             <p className="text-brand-muted font-black uppercase text-[8px] tracking-[0.3em]">Core Configuration & Matrix Control</p>
+          </div>
         </div>
-        <div className="hidden md:block">
-          <span className="bg-brand-surface px-4 py-1.5 rounded-full text-[9px] font-black text-brand-muted uppercase tracking-widest border border-brand-surface">
-            System Configuration Mode
-          </span>
-        </div>
-      </header>
+      </div>
 
-      {/* 2. AYAR GRUPLARI */}
-      {Object.entries(groupedSettings).map(([typeName, items]) => {
-        const isFloorGroup = typeName.toLowerCase().includes("floor") || items[0]?.type?.key === "floor";
+      {/* 2. CONTENT SECTION */}
+      <div className="max-w-7xl mx-auto px-4 mt-8 pb-20 space-y-4">
+        {Object.entries(groupedSettings).map(([typeName, items]) => {
+          const isFloorGroup = typeName.toLowerCase().includes("floor") || items[0]?.type?.key === "floor";
 
-        return (
-          <section key={typeName} className="border-2 border-slate-200 rounded-[2.5rem] bg-white shadow-xl mb-8 overflow-visible relative">
-            <div 
-              onClick={() => setExpandedTypes(p => ({...p, [typeName]: !p[typeName]}))}
-              className="p-6 flex justify-between items-center cursor-pointer bg-slate-50 border-b border-slate-100 rounded-t-[2.5rem]"
-            >
-              <span className="font-black text-slate-800 uppercase tracking-widest">{typeName}</span>
-              <span className="text-slate-400 font-bold">{expandedTypes[typeName] ? '▲' : '▼'}</span>
-            </div>
+          return (
+            <section key={typeName} className="ini-card bg-white overflow-visible">
+              <div
+                onClick={() => setExpandedTypes(p => ({ ...p, [typeName]: !p[typeName] }))}
+                className="p-5 flex justify-between items-center cursor-pointer bg-brand-surface/30 hover:bg-brand-surface/50 transition-colors border-b border-brand-surface"
+              >
+                <span className="font-black text-brand-secondary uppercase text-[11px] tracking-[0.2em]">{typeName}</span>
+                <span className="text-brand-muted font-black text-[10px]">{expandedTypes[typeName] ? 'HIDE —' : 'SHOW +'}</span>
+              </div>
 
-            {expandedTypes[typeName] && (
-              <div className="p-8 overflow-visible">
-                <table className="w-full border-separate border-spacing-y-2">
-                  <thead>
-                    <tr className="text-[11px] text-slate-400 font-black uppercase tracking-widest">
-                      <th className="pb-6 text-left pl-4">Key & Label</th>
-                      {isFloorGroup && <th className="pb-6 text-center w-32">Color</th>}
-                      <th className="pb-6 text-right pr-4">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="overflow-visible">
-                    {items.map((item) => {
-                      const currentColor = tempColors[item.id] || "bg-slate-100";
-                      const isDark = currentColor.includes("700");
+              {expandedTypes[typeName] && (
+                <div className="p-2 md:p-6 overflow-visible">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="text-[9px] text-brand-muted font-black uppercase tracking-[0.2em] border-b border-brand-surface">
+                        <th className="pb-4 text-left pl-4 w-1/2">Resource & Identifier</th>
+                        {isFloorGroup && <th className="pb-4 text-center w-32">Visual Tag</th>}
+                        <th className="pb-4 text-right pr-4">Execution</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-brand-surface">
+                      {items.map((item) => {
+                        const currentColor = tempColors[item.id] || "bg-slate-100";
+                        const isDark = currentColor.includes("700");
 
-                      return (
-                        <tr key={item.id} className="group hover:bg-slate-50/50 transition-all overflow-visible">
-                          <td className="py-6 pl-4">
-                            <div className="flex items-center gap-4">
-                              <span className={`text-[10px] font-mono font-black px-3 py-1.5 rounded-xl border-2 shadow-sm shrink-0 ${currentColor} ${isDark ? 'text-white border-black/10' : 'text-slate-800 border-black/5'}`}>
-                                {item.key}
-                              </span>
-                              <input 
-                                id={`label-${item.id}`} 
-                                defaultValue={item.label} 
-                                className="font-bold text-slate-800 bg-transparent outline-none flex-1 border-b-2 border-transparent focus:border-blue-500 px-2 py-1"
-                              />
-                            </div>
-                          </td>
-
-                          {isFloorGroup && (
-                            <td className="py-6 text-center overflow-visible">
-                              <div className="relative inline-block">
-                                <button 
-                                  onClick={() => setActivePicker(activePicker === item.id ? null : item.id)}
-                                  className={`w-12 h-12 rounded-2xl border-4 border-white shadow-lg transition-transform hover:scale-110 active:scale-90 ${currentColor}`}
+                        return (
+                          <tr key={item.id} className="group hover:bg-brand-surface/20 transition-all">
+                            <td className="py-5 pl-4">
+                              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                                <span className={`text-[9px] font-mono font-black px-3 py-1 rounded-sm border shrink-0 text-center ${currentColor} ${isDark ? 'text-white border-black/10' : 'text-brand-secondary border-brand-surface'}`}>
+                                  {item.key}
+                                </span>
+                                <input
+                                  id={`label-${item.id}`}
+                                  defaultValue={item.label}
+                                  className="font-black text-brand-secondary bg-transparent outline-none flex-1 border-b border-transparent focus:border-brand-primary px-1 py-1 text-sm uppercase tracking-tight"
                                 />
-                                
-                                {activePicker === item.id && (
-                                  <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[99999] p-5 bg-white border-2 border-slate-900 shadow-[0_30px_90px_rgba(0,0,0,0.4)] rounded-[1.5rem] w-[580px] animate-in zoom-in-95 fade-in duration-200">
-                                    <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-2">
-                                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest italic">Color Matrix v4.0</span>
-                                      <button onClick={() => setActivePicker(null)} className="text-slate-400 hover:text-red-500 font-bold px-2">✕</button>
-                                    </div>
-
-                                    <div className="grid grid-cols-5 gap-3"> 
-                                      {COLOR_GROUPS.map(color => (
-                                        <div key={color} className="flex flex-col gap-1">
-                                          <span className="text-[7px] font-black text-slate-400 uppercase tracking-tighter truncate text-left">{color}</span>
-                                          <div className="flex gap-0.5 h-7">
-                                            {TONES.map(tone => (
-                                              <button 
-                                                key={`${color}-${tone}`}
-                                                onClick={() => {
-                                                  setTempColors(p => ({...p, [item.id]: `bg-${color}-${tone}`}));
-                                                  setActivePicker(null);
-                                                }}
-                                                className={`flex-1 bg-${color}-${tone} hover:z-10 hover:scale-125 border border-black/5 transition-all duration-150 relative group/btn`}
-                                              >
-                                                <span className={`absolute inset-0 flex items-center justify-center text-[6px] font-bold opacity-0 group-hover/btn:opacity-100 transition-opacity ${tone === 700 ? 'text-white' : 'text-slate-900'}`}>
-                                                  {tone}
-                                                </span>
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-
-                                    <div className="mt-4 flex justify-between items-center text-[7px] font-black text-slate-300 uppercase italic">
-                                      <span>* Hover for tone values (100, 400, 700)</span>
-                                      <span>Direct Injection Mode</span>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             </td>
-                          )}
 
-                          <td className="py-6 text-right pr-4">
-                            <button 
-                              disabled={updatingId === item.id}
-                              onClick={() => handleUpdate(item)}
-                              className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-blue-600 transition-all disabled:opacity-50"
-                            >
-                              {updatingId === item.id ? '...' : 'SAVE'}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        );
-      })}
+                            {isFloorGroup && (
+                              <td className="py-5 text-center overflow-visible">
+                                <div className="relative inline-block">
+                                  <button
+                                    onClick={() => setActivePicker(activePicker === item.id ? null : item.id)}
+                                    className={`w-10 h-10 rounded-ini border-2 border-white shadow-sm transition-transform hover:scale-110 active:scale-95 ${currentColor}`}
+                                  />
+
+                                  {activePicker === item.id && (
+                                    <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[100] p-4 bg-white border border-brand-secondary shadow-2xl rounded-ini w-[300px] md:w-[500px] animate-in zoom-in-95 duration-200">
+                                      <div className="flex justify-between items-center mb-4 border-b border-brand-surface pb-2">
+                                        <span className="text-[8px] font-black text-brand-secondary uppercase tracking-widest italic">Color Matrix Selection</span>
+                                        <button onClick={() => setActivePicker(null)} className="text-brand-muted hover:text-brand-danger font-black text-xs">✕</button>
+                                      </div>
+
+                                      <div className="grid grid-cols-4 md:grid-cols-5 gap-3">
+                                        {COLOR_GROUPS.map(color => (
+                                          <div key={color} className="flex flex-col gap-1">
+                                            <span className="text-[6px] font-black text-brand-muted uppercase truncate">{color}</span>
+                                            <div className="flex gap-0.5 h-6">
+                                              {TONES.map(tone => (
+                                                <button
+                                                  key={`${color}-${tone}`}
+                                                  onClick={() => {
+                                                    setTempColors(p => ({ ...p, [item.id]: `bg-${color}-${tone}` }));
+                                                    setActivePicker(null);
+                                                  }}
+                                                  className={`flex-1 bg-${color}-${tone} hover:z-10 hover:scale-125 border border-black/5 transition-all relative group/btn`}
+                                                />
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+
+                            <td className="py-5 text-right pr-4">
+                              <button
+                                disabled={updatingId === item.id}
+                                onClick={() => handleUpdate(item)}
+                                className="bg-brand-secondary text-white px-6 py-2.5 rounded-ini text-[9px] font-black tracking-widest hover:bg-brand-primary transition-all disabled:opacity-50 shadow-sm active:scale-95"
+                              >
+                                {updatingId === item.id ? '...' : 'COMMIT'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }

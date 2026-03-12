@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import type { Room } from '../types/index';
 import { getAvailableRooms, getFloors } from '../api/rooms';
 import { createBooking } from '../api/bookings';
+import { FloorSection } from '../components/FloorSection';
+import { PageHeader } from "../components/PageHeader";
 
 type FloorConfig = {
   label: string;
@@ -18,20 +20,23 @@ export function Available() {
   const [bookingForm, setBookingForm] = useState({ title: '', start_time: '', end_time: '' });
   const [saving, setSaving] = useState(false);
   const [floorConfigs, setFloorConfigs] = useState<Record<string, FloorConfig>>({});
+  const [floorsLoaded, setFloorsLoaded] = useState(false);
+  const [expandedFloors, setExpandedFloors] = useState<Record<string, boolean>>({});
 
-const buildFloorConfigs = (apiFloors: any[]): Record<string, FloorConfig> => {
-  const configs: Record<string, FloorConfig> = {};
-  apiFloors.forEach((f: any) => {
-    const key = f.key.toUpperCase();
-    configs[key] = {
-      label: f.label.toUpperCase(),
-      color: f.bg_color_class || 'text-brand-muted',
-      border: f.border_color_class || 'border-brand-muted',
-      bg: f.active_bg_class || 'bg-brand-surface',
-    };
-  });
-  return configs;
-};
+  const buildFloorConfigs = (apiFloors: any[]): Record<string, FloorConfig> => {
+    const configs: Record<string, FloorConfig> = {};
+    apiFloors.forEach((f: any) => {
+      const key = f.key.toUpperCase();
+      configs[key] = {
+        label: f.label.toUpperCase(),
+        color: f.bg_color_class || 'text-brand-muted',
+        border: f.border_color_class || 'border-brand-muted',
+        bg: f.active_bg_class || 'bg-brand-surface',
+      };
+    });
+    return configs;
+  };
+
   const fetchRooms = async (date: string) => {
     setLoading(true);
     try {
@@ -46,34 +51,46 @@ const buildFloorConfigs = (apiFloors: any[]): Record<string, FloorConfig> => {
     }
   };
 
-const [floorsLoaded, setFloorsLoaded] = useState(false);
-
-useEffect(() => {
-  const init = async () => {
-    setLoading(true);
-    try {
-      const [fRes, rRes] = await Promise.all([
-        floorsLoaded ? Promise.resolve({ data: null }) : getFloors(),
-        getAvailableRooms(selectedDate)
-      ]);
-      if (!floorsLoaded && fRes.data) {
-        setFloorConfigs(buildFloorConfigs(fRes.data));
-        setFloorsLoaded(true);
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      try {
+        const [fRes, rRes] = await Promise.all([
+          floorsLoaded ? Promise.resolve({ data: null }) : getFloors(),
+          getAvailableRooms(selectedDate)
+        ]);
+        if (!floorsLoaded && fRes.data) {
+          setFloorConfigs(buildFloorConfigs(fRes.data));
+          setFloorsLoaded(true);
+        }
+        const roomsData = Array.isArray(rRes) ? rRes : (rRes.data || []);
+        setRooms(roomsData);
+      } catch (e) {
+        console.error('Init failed', e);
+      } finally {
+        setLoading(false);
       }
-      const roomsData = Array.isArray(rRes) ? rRes : (rRes.data || []);
-      setRooms(roomsData);
-    } catch (e) {
-      console.error('Init failed', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-  init();
-}, [selectedDate]);
+    };
+    init();
+  }, [selectedDate]);
+
+  const groupedRooms = useMemo(() => {
+    const groups: Record<string, Room[]> = {};
+    const safeRooms = Array.isArray(rooms) ? rooms : [];
+    safeRooms.forEach((room) => {
+      const prefix = room.name?.[0]?.toUpperCase() || 'F';
+      if (!groups[prefix]) groups[prefix] = [];
+      groups[prefix].push(room);
+    });
+    return groups;
+  }, [rooms]);
 
   useEffect(() => {
-    fetchRooms(selectedDate);
-  }, [selectedDate]);
+    const keys = Object.keys(groupedRooms).sort();
+    if (keys.length > 0) {
+      setExpandedFloors(p => keys[0] in p ? p : { [keys[0]]: true });
+    }
+  }, [groupedRooms]);
 
   const openBookingModal = (room: Room) => {
     setBookingModal({ room });
@@ -104,17 +121,6 @@ useEffect(() => {
     }
   };
 
-  const groupedRooms = useMemo(() => {
-    const groups: Record<string, Room[]> = {};
-    const safeRooms = Array.isArray(rooms) ? rooms : [];
-    safeRooms.forEach((room) => {
-      const prefix = room.name?.[0]?.toUpperCase() || 'F';
-      if (!groups[prefix]) groups[prefix] = [];
-      groups[prefix].push(room);
-    });
-    return groups;
-  }, [rooms]);
-
   const fallbackFloor: FloorConfig = {
     label: 'FLOOR',
     color: 'text-brand-muted',
@@ -123,35 +129,33 @@ useEffect(() => {
   };
 
   return (
-    <div className="min-h-screen bg-brand-surface px-4 pt-2 pb-12 font-brand">
-
-      {/* HEADER */}
-      <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-end gap-4 border-b-2 border-brand-surface pb-2">
-        <div>
-          <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic leading-none">
-            Room <span className="text-brand-primary">Availability</span>
-          </h1>
-          <p className="text-brand-muted font-black uppercase text-[9px] tracking-[0.3em] mt-0.5">Real-time resource tracking</p>
-        </div>
-
-        <div className="flex gap-2 w-full md:w-auto">
-          <input
-            type="date"
-            className="flex-1 md:w-48 p-2 bg-white border-2 border-brand-surface rounded-ini text-[11px] font-black uppercase outline-none focus:border-brand-primary transition-all"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-          />
-          <button
-            onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-            className="px-4 py-2 bg-brand-secondary text-white rounded-ini hover:bg-brand-primary transition-colors text-[10px] font-black uppercase tracking-widest"
-          >
-            Today
-          </button>
+    <div className="min-h-screen bg-brand-surface font-brand">
+      {/* HEADER SECTION - Bookings ile milimetrik hiza için pt-4 */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <div className="flex flex-col md:flex-row justify-between items-end">
+          <div className="flex-1 w-full">
+            <PageHeader highlight="ROOM" title="AVAILABILITY" />
+          </div>
+          
+          <div className="flex gap-2 pb-[2px] md:ml-4"> 
+            <input
+              type="date"
+              className="p-1 bg-white border border-brand-surface rounded-ini text-[11px] font-black uppercase outline-none"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+            <button
+              onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+              className="px-3 py-1 bg-brand-secondary text-white rounded-ini text-[10px] font-black uppercase tracking-widest"
+            >
+              Today
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* CONTENT */}
-      <div className="max-w-7xl mx-auto">
+      {/* CONTENT SECTION */}
+      <div className="max-w-7xl mx-auto px-4 mt-6"> 
         {loading ? (
           <div className="py-20 text-center font-black text-brand-muted text-[10px] tracking-[0.4em] animate-pulse uppercase">
             Scanning Infrastructure...
@@ -163,57 +167,53 @@ useEffect(() => {
             </p>
           </div>
         ) : (
-          Object.keys(groupedRooms).sort().map((prefix) => {
-            const floorRooms = groupedRooms[prefix] || [];
-            if (floorRooms.length === 0) return null;
-            const floor = floorConfigs[prefix] || { ...fallbackFloor, label: `${prefix} FLOOR` };
+          <div className="space-y-4 pb-20"> 
+            {Object.keys(groupedRooms).sort().map((prefix) => {
+              const floorRooms = groupedRooms[prefix] || [];
+              if (floorRooms.length === 0) return null;
+              const floor = floorConfigs[prefix] || { ...fallbackFloor, label: `${prefix} FLOOR` };
 
-            return (
-              <div key={prefix} className="mb-10">
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>
-                    {floor.label}
-                  </h2>
-                  <div className="flex-1 h-px bg-gray-200" />
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {floorRooms.map((room) => (
-                    <div
-                      key={room.id}
-                      onClick={() => openBookingModal(room)}
-                      className="ini-card p-4 hover:border-brand-primary transition-all cursor-pointer group relative overflow-hidden"
-                    >
-                      <h3 className={`font-black text-lg ${floor.color} uppercase tracking-tighter leading-none mb-2 group-hover:translate-x-1 transition-transform`}>
-                        {room.name}
-                      </h3>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+              return (
+                <FloorSection
+                  key={prefix}
+                  label={floor.label}
+                  color={floor.color}
+                  isOpen={!!expandedFloors[prefix]}
+                  onToggle={() => setExpandedFloors(p => ({ ...p, [prefix]: !p[prefix] }))}
+                >
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {floorRooms.map((room) => (
+                      <div
+                        key={room.id}
+                        onClick={() => openBookingModal(room)}
+                        className="ini-card p-4 hover:border-brand-primary transition-all cursor-pointer group relative overflow-hidden bg-white"
+                      >
+                        <h3 className={`font-black text-lg ${floor.color} uppercase tracking-tighter leading-none mb-2 group-hover:translate-x-1 transition-transform`}>
+                          {room.name}
+                        </h3>
+                        <div className="space-y-1">
                           <span className="text-[10px] font-black text-brand-secondary uppercase">
                             {room.available_capacity} Desks Free
                           </span>
+                          {room.booked_slots > 0 && (
+                            <div className="block mt-1">
+                              <span className="text-[8px] font-black text-brand-danger uppercase bg-brand-surface px-1.5 py-0.5 rounded-ini border border-brand-surface">
+                                {room.occupancy_rate}% Occupied
+                              </span>
+                            </div>
+                          )}
                         </div>
-
-                        {room.booked_slots > 0 && (
-                          <div className="inline-block bg-brand-surface px-2 py-0.5 rounded-ini border border-brand-surface">
-                            <span className="text-[8px] font-black text-brand-danger uppercase">
-                              {room.occupancy_rate}% Occupied
-                            </span>
-                          </div>
-                        )}
+                        <div className="mt-4 pt-3 border-t border-brand-surface flex justify-between items-center text-brand-muted group-hover:text-brand-primary transition-colors">
+                          <span className="text-[8px] font-black uppercase tracking-widest">Quick Book</span>
+                          <span className="text-xs group-hover:translate-x-1 transition-transform">→</span>
+                        </div>
                       </div>
-
-                      <div className="mt-4 pt-3 border-t border-brand-surface flex justify-between items-center">
-                        <span className="text-[8px] font-black text-brand-muted uppercase tracking-widest">Quick Book</span>
-                        <span className="text-xs group-hover:translate-x-1 transition-transform">→</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })
+                    ))}
+                  </div>
+                </FloorSection>
+              );
+            })}
+          </div>
         )}
       </div>
 

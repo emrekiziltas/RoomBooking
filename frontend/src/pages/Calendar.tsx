@@ -264,40 +264,103 @@ const fetchData = async () => {
       return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
     });
   }
+const [isModalOpen, setIsModalOpen] = useState(false);
+const [submitting, setSubmitting] = useState(false);
+const [bookingPayload, setBookingPayload] = useState({
+  roomId: 'all',
+  title: '',
+  start: new Date().toISOString().split('T')[0],
+  end: new Date().toISOString().split('T')[0]
+});
 
-  return (
-    <div className={`min-h-screen bg-brand-surface px-4 pt-2 pb-8 font-brand transition-all duration-500 ${viewWindow === 15 ? 'view-15' : ''}`}>
-      
-      {/* HEADER SECTION */}
-      <div className="max-w-[100vw] mx-auto mb-1 flex flex-col md:flex-row justify-between items-end gap-2 border-b-2 border-brand-surface pb-1">
-        <div>
-          <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter leading-none italic">
-            Daily <span className="text-brand-primary">Ops</span>
-          </h1>
-          <p className="text-brand-muted text-[9px] font-black uppercase tracking-[0.2em] mt-0.5">
-            {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' })} — {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
-          </p>
-        </div>
+const handleQuickSubmit = async () => {
+  if (bookingPayload.roomId === 'all' || !bookingPayload.title) return;
+  setSubmitting(true);
+  try {
+    await createBooking({
+      room_id: Number(bookingPayload.roomId),
+      title: bookingPayload.title.toUpperCase(),
+      color: 'var(--brand-primary)',
+      // Laravel'in anlaması için 'T' yerine boşluklu formatı dene (veya tam tersi)
+      start_time: `${bookingPayload.start} 08:30:00`,
+      end_time: `${bookingPayload.end} 17:30:00`,
+    });
+
+    setIsModalOpen(false);
+    setBookingPayload(p => ({ ...p, title: '' })); 
+    
+    // fetchData senin dosyadaki orijinal fonksiyonun adı
+    await fetchData(); 
+    
+    setToast({ msg: "SEQUENCE COMMITTED ✓", type: 'success' });
+  } catch (error: any) {
+    const errorMsg = error.response?.data?.message || "ACTION FAILED";
+    setToast({ msg: errorMsg.toUpperCase(), type: 'error' });
+    console.error("Detail:", error.response?.data);
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+ return (
+  <div className={`min-h-screen bg-brand-surface font-brand transition-all duration-500 ${viewWindow === 15 ? 'view-15' : ''}`}>
+    
+    {/* 1. HEADER SECTION - Diğer sayfalarla milimetrik hiza için pt-4 */}
+<div className="max-w-[100vw] mx-auto px-4 pt-4">
+      <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4"> {/* Alt çizgi ve iç boşluk eklendi */}
         
-        <div className="flex items-center gap-2 mb-0.5">
-          <div className="flex bg-brand-surface p-0.5 rounded-lg border border-brand-surface">
+        {/* Başlık Grubu */}
+        <div className="flex-1 w-full">
+           <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter leading-none italic">
+                DAILY <span className="text-brand-primary">OPS</span>
+              </h1>
+              <div className="h-6 w-[2px] bg-brand-primary/20 rotate-[20deg]" />
+              <p className="text-brand-muted text-[10px] font-black uppercase tracking-[0.2em]">
+                {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} — {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+           </div>
+        </div>
+        {/* Kontroller Grubu */}
+        <div className="flex flex-wrap items-center gap-2 pb-[2px] mt-4 md:mt-0">
+          
+          {/* Gün Seçici */}
+          <div className="flex bg-white p-1 rounded-ini border border-brand-surface shadow-sm">
             {[7, 15].map((v) => (
               <button 
                 key={v} 
                 onClick={() => setViewWindow(v as any)} 
-                className={`px-3 py-1.5 rounded-md text-[9px] font-black transition-all ${viewWindow === v ? 'bg-white text-brand-secondary shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
+                className={`px-3 py-1 rounded-ini text-[9px] font-black transition-all ${viewWindow === v ? 'bg-brand-secondary text-white shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
               >
-                {v} GÜN
+                {v} DAYS
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <button onClick={movePrev} className="w-9 h-9 flex items-center justify-center bg-white border border-brand-surface rounded-md hover:border-brand-primary transition-all text-brand-secondary font-bold shadow-sm text-xs">←</button>
-            <button onClick={() => setStartDate(new Date(new Date().setHours(0,0,0,0)))} className="px-5 py-2 text-[10px] font-black uppercase tracking-widest text-white bg-brand-secondary rounded-md hover:bg-brand-primary transition-all shadow-md">Bugün</button>
-            <button onClick={moveNext} className="w-9 h-9 flex items-center justify-center bg-white border border-brand-surface rounded-md hover:border-brand-primary transition-all text-brand-secondary font-bold shadow-sm text-xs">→</button>
+
+          {/* Navigasyon */}
+          <div className="flex items-center gap-1 bg-white p-1 rounded-ini border border-brand-surface shadow-sm">
+            <button onClick={movePrev} className="w-8 h-8 flex items-center justify-center hover:bg-brand-surface rounded-ini transition-all text-brand-secondary font-bold text-xs">←</button>
+            <button onClick={() => setStartDate(new Date(new Date().setHours(0,0,0,0)))} className="px-4 h-8 text-[9px] font-black uppercase tracking-widest text-brand-secondary hover:text-brand-primary transition-all">Today</button>
+            <button onClick={moveNext} className="w-8 h-8 flex items-center justify-center hover:bg-brand-surface rounded-ini transition-all text-brand-secondary font-bold text-xs">→</button>
           </div>
+
+          {/* Yeni Kayıt Butonu */}
+          <button 
+            onClick={() => {
+              setBookingPayload(prev => ({
+                ...prev,
+                start: startDate.toISOString().split('T')[0],
+                end: startDate.toISOString().split('T')[0]
+              }));
+              setIsModalOpen(true);
+            }}
+            className="px-6 py-3 bg-brand-secondary text-white font-black uppercase text-[10px] tracking-widest rounded-ini hover:bg-brand-primary transition-all shadow-md active:scale-95"
+          >
+            + New Entry
+          </button>
         </div>
       </div>
+    </div>
 
       {/* CALENDAR TABLE */}
       <div className="ini-card overflow-visible">
@@ -399,7 +462,75 @@ const fetchData = async () => {
           </table>
         </div>
       </div>
+{isModalOpen && (
+  <div className="fixed inset-0 flex items-center justify-center z-[2000] p-4">
+    {/* Backdrop */}
+    <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+    
+    {/* Modal Content */}
+    <div className="bg-white max-w-sm w-full p-8 rounded-ini relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
+      <h2 className="text-xl font-black text-brand-secondary uppercase italic text-center mb-8">Quick Entry</h2>
+      
+      <div className="space-y-5">
+        {/* ODA SEÇİCİ (Paylaştığın Yapı) */}
+        <div className="bg-brand-surface p-3 rounded flex items-center gap-4 border border-brand-surface">
+          <span className="text-xs">🏢</span>
+          <select 
+            value={bookingPayload.roomId} 
+            onChange={(e) => setBookingPayload({...bookingPayload, roomId: e.target.value})}
+            className="flex-1 bg-transparent font-black text-brand-secondary outline-none text-[11px] uppercase cursor-pointer"
+          >
+            <option value="all">Select Resource</option>
+            {rooms.map(room => (
+              <option key={room.id} value={room.id.toString()}>{room.name.toUpperCase()}</option>
+            ))}
+          </select>
+        </div>
 
+        {/* BAŞLIK */}
+        <div className="space-y-1">
+            <label className="text-[8px] font-black text-brand-muted uppercase ml-2">Mission Title</label>
+            <input 
+              autoFocus
+              type="text" 
+              placeholder="E.G. PROJECT X"
+              className="w-full bg-brand-surface p-4 rounded font-black text-[11px] outline-none ring-1 ring-transparent focus:ring-brand-primary uppercase transition-all"
+              value={bookingPayload.title}
+              onChange={(e) => setBookingPayload({...bookingPayload, title: e.target.value})}
+            />
+        </div>
+
+        {/* TARİHLER */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[8px] font-black text-brand-muted uppercase ml-2">Start</label>
+            <input type="date" className="w-full bg-brand-surface p-3 rounded font-black text-[10px] outline-none" value={bookingPayload.start} onChange={(e) => setBookingPayload({...bookingPayload, start: e.target.value})} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[8px] font-black text-brand-muted uppercase ml-2">End</label>
+            <input type="date" className="w-full bg-brand-surface p-3 rounded font-black text-[10px] outline-none" value={bookingPayload.end} onChange={(e) => setBookingPayload({...bookingPayload, end: e.target.value})} />
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+            <button 
+                disabled={submitting || bookingPayload.roomId === 'all' || !bookingPayload.title}
+                onClick={handleQuickSubmit}
+                className="flex-[2] bg-brand-secondary text-white py-4 rounded font-black uppercase text-[10px] hover:bg-brand-primary disabled:opacity-30 transition-all shadow-lg"
+            >
+                {submitting ? 'COMMITTING...' : 'CONFIRM ENTRY'}
+            </button>
+            <button 
+                onClick={() => setIsModalOpen(false)}
+                className="flex-1 bg-brand-surface text-brand-muted py-4 rounded font-black uppercase text-[10px] hover:bg-gray-200"
+            >
+                Abort
+            </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       {/* MODAL SECTION */}
       {(isNewBookingModalOpen || editingBooking) && (
         <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
