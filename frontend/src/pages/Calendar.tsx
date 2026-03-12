@@ -313,7 +313,7 @@ const handleQuickSubmit = async () => {
         <div className="flex-1 w-full">
            <div className="flex items-center gap-3">
               <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter leading-none italic">
-                DAILY <span className="text-brand-primary">OPS</span>
+                INI <span className="text-brand-primary">CALENDAR</span>
               </h1>
               <div className="h-6 w-[2px] bg-brand-primary/20 rotate-[20deg]" />
               <p className="text-brand-muted text-[10px] font-black uppercase tracking-[0.2em]">
