@@ -318,7 +318,7 @@ export function Rooms() {
     Add
   </button>
   
-  {/* KAYBOLAN ÖNERİ LİSTESİ BURASI */}
+  {/* KAYBOLAN ÖNERİ LİSTESİ  */}
   {suggestions.length > 0 && (
     <div className="absolute z-[70] left-0 right-0 mt-1 bg-white border border-brand-surface rounded-ini shadow-2xl max-h-40 overflow-y-auto">
       {suggestions.map((s) => (
