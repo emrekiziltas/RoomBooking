@@ -25,147 +25,183 @@ export function NewBookingForm({ rooms, onSuccess, onCancel, showToast }: NewBoo
     end_slot: 'afternoon',
   });
 
-  // --- OTOMATİK TARİH EŞİTLEME ---
   const handleStartDateChange = (newDate: string) => {
-    setForm(prev => ({
-      ...prev,
-      start_date: newDate,
-      // Başlangıç değişince bitişi de otomatik eşitle
-      end_date: newDate 
-    }));
+    setForm(prev => ({ ...prev, start_date: newDate, end_date: newDate }));
   };
 
-  // --- FORM KONTROLLERİ VE VALIDASYON ---
   const startTimeStr = `${form.start_date} ${SLOTS[form.start_slot as keyof typeof SLOTS].start}`;
   const endTimeStr = `${form.end_date} ${SLOTS[form.end_slot as keyof typeof SLOTS].end}`;
-  
+
   const isTimeInvalid = new Date(endTimeStr) <= new Date(startTimeStr);
   const isFormEmpty = !form.room_id || !form.title.trim();
   const isDisabled = isFormEmpty || isTimeInvalid || submitting;
 
   const handleCreate = async () => {
     if (isDisabled) return;
-
     setSubmitting(true);
     try {
-      await createBooking({ 
-        ...form, 
-        room_id: Number(form.room_id), 
+      await createBooking({
+        ...form,
+        room_id: Number(form.room_id),
         title: form.title.toUpperCase(),
-        start_time: startTimeStr, 
-        end_time: endTimeStr, 
-        color: '#4f46e5' 
+        start_time: startTimeStr,
+        end_time: endTimeStr,
+        color: '#4f46e5'
       });
-      
       showToast("RESERVATION CREATED ✓", "success");
       onSuccess();
     } catch (err: any) {
-      // Backend Validation Mesajlarını Yakalama
       const validationErrors = err.response?.data?.errors;
-      
       if (validationErrors) {
-        // TypeScript hatasını önlemek için 'as string[][]' casting
         const errorArrays = Object.values(validationErrors) as string[][];
         if (errorArrays.length > 0 && errorArrays[0].length > 0) {
           showToast(errorArrays[0][0].toUpperCase(), "error");
         }
       } else {
-        const msg = err.response?.data?.message || "ACTION FAILED";
-        showToast(msg.toUpperCase(), "error");
+        showToast((err.response?.data?.message || "ACTION FAILED").toUpperCase(), "error");
       }
     } finally {
       setSubmitting(false);
     }
   };
 
+  const formatDateLabel = (dateStr: string) => {
+    if (!dateStr) return 'SELECT...';
+    return new Date(dateStr).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }).toUpperCase();
+  };
+
+  const boxHeight = "h-[52px]";
+
+  const CalendarIcon = ({ color }: { color: string }) => (
+    <svg className={`w-5 h-5 ${color} shrink-0`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+
   return (
-    <div className="ini-card p-6 border-t-4 border-brand-primary animate-in slide-in-from-top-2 shadow-xl bg-white">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* Sol Kolon: Başlık ve Kaynak */}
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <span className="text-[9px] font-black text-brand-muted uppercase ml-2 tracking-widest">Description</span>
-            <input 
-              type="text" 
-              placeholder="GUEST NAME / EVENT TITLE" 
-              value={form.title} 
-              onChange={e => setForm({ ...form, title: e.target.value })} 
-              className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-xs outline-none uppercase border-2 border-transparent focus:border-brand-primary transition-all" 
-            />
-          </div>
-          <div className="space-y-1">
-            <span className="text-[9px] font-black text-brand-muted uppercase ml-2 tracking-widest">Resource</span>
-            <select 
-              value={form.room_id} 
-              onChange={e => setForm({ ...form, room_id: e.target.value })} 
-              className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-xs outline-none uppercase cursor-pointer"
+    <div className="bg-white border-[6px] border-brand-secondary p-4 rounded-ini shadow-2xl animate-in slide-in-from-top duration-300">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-end gap-4">
+
+        {/* RESOURCE SELECT */}
+        <div className="flex-[1.2] min-w-[160px]">
+          <label className="text-[10px] font-black text-brand-muted uppercase ml-1 tracking-[0.2em] mb-1 block">Resource</label>
+          <select
+            value={form.room_id}
+            onChange={e => setForm({ ...form, room_id: e.target.value })}
+            className={`w-full bg-brand-surface rounded-ini px-4 font-black text-xs uppercase border-2 border-transparent focus:border-brand-primary outline-none transition-all cursor-pointer ${boxHeight}`}
+          >
+            <option value="">SELECT RESOURCE</option>
+            {rooms.map(r => <option key={r.id} value={r.id}>{r.name.toUpperCase()}</option>)}
+          </select>
+        </div>
+
+        {/* GUEST / TITLE INPUT */}
+        <div className="flex-[2.5] min-w-[240px]">
+          <label className="text-[10px] font-black text-brand-muted uppercase ml-1 tracking-[0.2em] mb-1 block">Guest / Title</label>
+          <input
+            type="text"
+            placeholder="ENTER NAME..."
+            value={form.title}
+            onChange={e => setForm({ ...form, title: e.target.value })}
+            className={`w-full bg-brand-surface rounded-ini px-4 font-black text-xs uppercase border-2 border-transparent focus:border-brand-primary outline-none transition-all ${boxHeight}`}
+          />
+        </div>
+
+        {/* ARRIVAL DATE PICKER */}
+        <div className="flex-[3] min-w-[280px]">
+          <span className="text-[10px] font-black text-brand-primary uppercase ml-1 tracking-[0.2em] mb-1 block">Arrival</span>
+          <div className="flex gap-2">
+            <div className={`relative flex-1 ${boxHeight} group/date`}>
+              {/* TASARIM KATMANI */}
+              <div className={`absolute inset-0 flex items-center justify-between bg-brand-surface rounded-ini px-4 font-black text-xs text-brand-secondary border-2 border-transparent group-hover/date:bg-brand-surface/80 group-focus-within/date:border-brand-primary transition-all pointer-events-none ${boxHeight}`}>
+                <span>{formatDateLabel(form.start_date)}</span>
+                <CalendarIcon color="text-brand-primary" />
+              </div>
+              {/* GERÇEK TIKLAMA ALANI (Görünmez ama devasa) */}
+              <input
+                type="date"
+                value={form.start_date}
+                onChange={e => handleStartDateChange(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 
+                           [&::-webkit-calendar-picker-indicator]:absolute 
+                           [&::-webkit-calendar-picker-indicator]:inset-0 
+                           [&::-webkit-calendar-picker-indicator]:w-full 
+                           [&::-webkit-calendar-picker-indicator]:h-full 
+                           [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              />
+            </div>
+            <select
+              value={form.start_slot}
+              onChange={e => setForm({ ...form, start_slot: e.target.value })}
+              className={`w-32 bg-brand-surface rounded-ini px-2 font-black text-[11px] outline-none cursor-pointer border-2 border-transparent focus:border-brand-primary ${boxHeight}`}
             >
-              <option value="">Select Resource</option>
-              {rooms.map(r => (
-                <option key={r.id} value={r.id}>{r.name.toUpperCase()}</option>
-              ))}
+              <option value="morning">08:30 AM</option>
+              <option value="afternoon">12:30 PM</option>
             </select>
           </div>
         </div>
 
-        {/* Sağ Kolon: Tarih ve Slotlar */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <span className="text-[9px] font-black text-brand-primary block text-center uppercase tracking-widest">Check-In</span>
-            <input 
-              type="date" 
-              value={form.start_date} 
-              onChange={e => handleStartDateChange(e.target.value)} 
-              className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px] outline-none" 
-            />
-            <select value={form.start_slot} onChange={e => setForm({ ...form, start_slot: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px] outline-none">
-              <option value="morning">Morning (08:30)</option>
-              <option value="afternoon">Afternoon (12:30)</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <span className="text-[9px] font-black text-brand-danger block text-center uppercase tracking-widest">Check-Out</span>
-            <input 
-              type="date" 
-              value={form.end_date} 
-              onChange={e => setForm({ ...form, end_date: e.target.value })} 
-              className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px] outline-none" 
-            />
-            <select value={form.end_slot} onChange={e => setForm({ ...form, end_slot: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px] outline-none">
-              <option value="morning">Ends 12:30</option>
-              <option value="afternoon">Ends 17:30</option>
+        {/* DEPARTURE DATE PICKER */}
+        <div className="flex-[3] min-w-[280px]">
+          <span className="text-[10px] font-black text-brand-danger uppercase ml-1 tracking-[0.2em] mb-1 block">Departure</span>
+          <div className="flex gap-2">
+            <div className={`relative flex-1 ${boxHeight} group/date`}>
+              {/* TASARIM KATMANI */}
+              <div className={`absolute inset-0 flex items-center justify-between bg-brand-surface rounded-ini px-4 font-black text-xs text-brand-secondary border-2 border-transparent group-hover/date:bg-brand-surface/80 group-focus-within/date:border-brand-danger transition-all pointer-events-none ${boxHeight}`}>
+                <span>{formatDateLabel(form.end_date)}</span>
+                <CalendarIcon color="text-brand-danger" />
+              </div>
+              {/* GERÇEK TIKLAMA ALANI (Görünmez ama devasa) */}
+              <input
+                type="date"
+                value={form.end_date}
+                onChange={e => setForm({ ...form, end_date: e.target.value })}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 
+                           [&::-webkit-calendar-picker-indicator]:absolute 
+                           [&::-webkit-calendar-picker-indicator]:inset-0 
+                           [&::-webkit-calendar-picker-indicator]:w-full 
+                           [&::-webkit-calendar-picker-indicator]:h-full 
+                           [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              />
+            </div>
+            <select
+              value={form.end_slot}
+              onChange={e => setForm({ ...form, end_slot: e.target.value })}
+              className={`w-32 bg-brand-surface rounded-ini px-2 font-black text-[11px] outline-none cursor-pointer border-2 border-transparent focus:border-brand-danger ${boxHeight}`}
+            >
+              <option value="morning">12:30 PM</option>
+              <option value="afternoon">05:30 PM</option>
             </select>
           </div>
         </div>
+
+        {/* ACTIONS */}
+        <div className="flex items-end gap-2 lg:ml-4">
+          <button
+            onClick={handleCreate}
+            disabled={isDisabled}
+            className={`px-10 rounded-ini font-black text-xs tracking-[0.2em] uppercase transition-all whitespace-nowrap shadow-xl active:scale-95 ${boxHeight}
+              ${isDisabled
+                ? 'bg-brand-surface text-brand-muted cursor-not-allowed'
+                : 'bg-brand-primary text-white hover:bg-brand-secondary active:bg-brand-primary'
+              }`}
+          >
+            {submitting ? 'WAIT...' : 'COMMIT ✓'}
+          </button>
+
+          <button
+            onClick={onCancel}
+            className={`w-14 bg-brand-surface text-brand-muted rounded-ini font-black text-lg uppercase hover:bg-brand-danger hover:text-white transition-all flex items-center justify-center ${boxHeight}`}
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
-      {/* Alt Kısım: Butonlar */}
-      <div className="flex flex-col md:flex-row gap-3 mt-8">
-        <button 
-          onClick={handleCreate} 
-          disabled={isDisabled}
-          className={`flex-[2] py-4 rounded-ini font-black text-[11px] tracking-[0.2em] uppercase transition-all shadow-md
-            ${isDisabled 
-              ? 'bg-brand-surface text-brand-muted cursor-not-allowed opacity-60' 
-              : 'bg-brand-primary text-white hover:bg-brand-secondary active:scale-[0.98] shadow-brand-primary/20'
-            }`}
-        >
-          {submitting ? 'Processing...' : isTimeInvalid ? 'Invalid Time Range' : 'Commit Reservation'}
-        </button>
-        <button 
-          onClick={onCancel} 
-          className="flex-1 bg-brand-surface text-brand-muted py-4 rounded-ini font-black text-[11px] tracking-widest uppercase hover:bg-brand-surface/80 transition-all"
-        >
-          Dismiss
-        </button>
-      </div>
-      
-      {/* Uyarı Notu */}
       {isTimeInvalid && !isFormEmpty && (
-        <p className="text-center text-brand-danger font-black text-[8px] mt-3 uppercase tracking-tighter animate-pulse">
-          ⚠ Departure must be scheduled after arrival time.
-        </p>
+        <div className="text-[10px] font-black text-brand-danger mt-2 uppercase tracking-widest text-right animate-pulse px-2">
+          ⚠ ERROR: Check-out must be after arrival.
+        </div>
       )}
     </div>
   );
