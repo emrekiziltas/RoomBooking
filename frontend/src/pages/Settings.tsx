@@ -18,6 +18,7 @@ export function Settings() {
   const [tempColors, setTempColors] = useState<Record<number, string>>({});
 
   const fetchSettings = async () => {
+    setLoading(true);
     try {
       const res = await api.get("/settings");
       const rawData = res.data.success ? res.data.data : [];
@@ -54,26 +55,37 @@ export function Settings() {
 
   const handleUpdate = async (item: any) => {
     setUpdatingId(item.id);
+    
+    // Değerleri DOM'dan alıyoruz
     const labelVal = (document.getElementById(`label-${item.id}`) as HTMLInputElement).value;
+    const metadataInput = document.getElementById(`metadata-${item.id}`) as HTMLInputElement;
+    
     const currentColor = tempColors[item.id] || item.bg_color_class || "bg-slate-100";
     const dbFriendlyColor = currentColor.replace('bg-', 'text-');
 
-    try {
-      await api.put(`/settings/${item.id}`, { label: labelVal, bg_color_class: dbFriendlyColor });
-      fetchSettings();
-    } catch (err) { alert("Action Failed!"); } finally { setUpdatingId(null); }
-  };
+    const payload: any = { 
+      label: labelVal, 
+      bg_color_class: dbFriendlyColor 
+    };
 
-  if (loading) return (
-    <div className="h-screen flex items-center justify-center font-brand font-black text-brand-secondary animate-pulse text-xl uppercase tracking-widest">
-      Accessing System Core...
-    </div>
-  );
+    // Eğer metadata varsa payload'a ekle (genelde object formatında beklenir)
+    if (metadataInput) {
+      payload.metadata = metadataInput.value;
+    }
+
+    try {
+      await api.put(`/settings/${item.id}`, payload);
+      fetchSettings();
+    } catch (err) { 
+      alert("Action Failed!"); 
+    } finally { 
+      setUpdatingId(null); 
+    }
+  };
 
   return (
     <div className="min-h-screen bg-brand-surface font-brand">
       
-      {/* 1. HEADER SECTION */}
       <div className="max-w-7xl mx-auto px-4 pt-4">
         <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
           <div className="flex-1 w-full">
@@ -85,110 +97,108 @@ export function Settings() {
         </div>
       </div>
 
-      {/* 2. CONTENT SECTION */}
       <div className="max-w-7xl mx-auto px-4 mt-8 pb-20 space-y-4">
-        {Object.entries(groupedSettings).map(([typeName, items]) => {
-          const isFloorGroup = typeName.toLowerCase().includes("floor") || items[0]?.type?.key === "floor";
+        {loading ? (
+          <div className="h-[60vh] flex flex-col items-center justify-center">
+             <div className="w-10 h-10 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-4" />
+             <p className="text-brand-secondary font-black text-[9px] uppercase tracking-[0.4em] animate-pulse">Syncing Matrix...</p>
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {Object.entries(groupedSettings).map(([typeName, items]) => {
+              const isFloorGroup = typeName.toLowerCase().includes("floor") || items[0]?.type?.key === "floor";
 
-          return (
-            <section key={typeName} className="ini-card bg-white overflow-visible">
-              <div
-                onClick={() => setExpandedTypes(p => ({ ...p, [typeName]: !p[typeName] }))}
-                className="p-5 flex justify-between items-center cursor-pointer bg-brand-surface/30 hover:bg-brand-surface/50 transition-colors border-b border-brand-surface"
-              >
-                <span className="font-black text-brand-secondary uppercase text-[11px] tracking-[0.2em]">{typeName}</span>
-                <span className="text-brand-muted font-black text-[10px]">{expandedTypes[typeName] ? 'HIDE —' : 'SHOW +'}</span>
-              </div>
+              return (
+                <section key={typeName} className="ini-card bg-white mb-6 overflow-visible">
+                  <div
+                    onClick={() => setExpandedTypes(p => ({ ...p, [typeName]: !p[typeName] }))}
+                    className="p-5 flex justify-between items-center cursor-pointer bg-brand-surface/30 hover:bg-brand-surface/50 transition-colors border-b border-brand-surface"
+                  >
+                    <span className="font-black text-brand-secondary uppercase text-[11px] tracking-[0.2em]">{typeName}</span>
+                    <span className="text-brand-muted font-black text-[10px]">{expandedTypes[typeName] ? 'HIDE —' : 'SHOW +'}</span>
+                  </div>
 
-              {expandedTypes[typeName] && (
-                <div className="p-2 md:p-6 overflow-visible">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="text-[9px] text-brand-muted font-black uppercase tracking-[0.2em] border-b border-brand-surface">
-                        <th className="pb-4 text-left pl-4 w-1/2">Resource & Identifier</th>
-                        {isFloorGroup && <th className="pb-4 text-center w-32">Visual Tag</th>}
-                        <th className="pb-4 text-right pr-4">Execution</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-brand-surface">
-                      {items.map((item) => {
-                        const currentColor = tempColors[item.id] || "bg-slate-100";
-                        const isDark = currentColor.includes("700");
-
-                        return (
-                          <tr key={item.id} className="group hover:bg-brand-surface/20 transition-all">
-                            <td className="py-5 pl-4">
-                              <div className="flex flex-col md:flex-row md:items-center gap-3">
-                                <span className={`text-[9px] font-mono font-black px-3 py-1 rounded-sm border shrink-0 text-center ${currentColor} ${isDark ? 'text-white border-black/10' : 'text-brand-secondary border-brand-surface'}`}>
-                                  {item.key}
-                                </span>
-                                <input
-                                  id={`label-${item.id}`}
-                                  defaultValue={item.label}
-                                  className="font-black text-brand-secondary bg-transparent outline-none flex-1 border-b border-transparent focus:border-brand-primary px-1 py-1 text-sm uppercase tracking-tight"
-                                />
-                              </div>
-                            </td>
-
-                            {isFloorGroup && (
-                              <td className="py-5 text-center overflow-visible">
-                                <div className="relative inline-block">
-                                  <button
-                                    onClick={() => setActivePicker(activePicker === item.id ? null : item.id)}
-                                    className={`w-10 h-10 rounded-ini border-2 border-white shadow-sm transition-transform hover:scale-110 active:scale-95 ${currentColor}`}
-                                  />
-
-                                  {activePicker === item.id && (
-                                    <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[100] p-4 bg-white border border-brand-secondary shadow-2xl rounded-ini w-[300px] md:w-[500px] animate-in zoom-in-95 duration-200">
-                                      <div className="flex justify-between items-center mb-4 border-b border-brand-surface pb-2">
-                                        <span className="text-[8px] font-black text-brand-secondary uppercase tracking-widest italic">Color Matrix Selection</span>
-                                        <button onClick={() => setActivePicker(null)} className="text-brand-muted hover:text-brand-danger font-black text-xs">✕</button>
-                                      </div>
-
-                                      <div className="grid grid-cols-4 md:grid-cols-5 gap-3">
-                                        {COLOR_GROUPS.map(color => (
-                                          <div key={color} className="flex flex-col gap-1">
-                                            <span className="text-[6px] font-black text-brand-muted uppercase truncate">{color}</span>
-                                            <div className="flex gap-0.5 h-6">
-                                              {TONES.map(tone => (
-                                                <button
-                                                  key={`${color}-${tone}`}
-                                                  onClick={() => {
-                                                    setTempColors(p => ({ ...p, [item.id]: `bg-${color}-${tone}` }));
-                                                    setActivePicker(null);
-                                                  }}
-                                                  className={`flex-1 bg-${color}-${tone} hover:z-10 hover:scale-125 border border-black/5 transition-all relative group/btn`}
-                                                />
-                                              ))}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            )}
-
-                            <td className="py-5 text-right pr-4">
-                              <button
-                                disabled={updatingId === item.id}
-                                onClick={() => handleUpdate(item)}
-                                className="bg-brand-secondary text-white px-6 py-2.5 rounded-ini text-[9px] font-black tracking-widest hover:bg-brand-primary transition-all disabled:opacity-50 shadow-sm active:scale-95"
-                              >
-                                {updatingId === item.id ? '...' : 'COMMIT'}
-                              </button>
-                            </td>
+                  {expandedTypes[typeName] && (
+                    <div className="p-2 md:p-6 overflow-visible">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="text-[9px] text-brand-muted font-black uppercase tracking-[0.2em] border-b border-brand-surface text-left">
+                            <th className="pb-4 pl-4">Resource Identifier</th>
+                            <th className="pb-4">Label & Display Name</th>
+                            <th className="pb-4">Metadata / Value</th>
+                            {isFloorGroup && <th className="pb-4 text-center">Color</th>}
+                            <th className="pb-4 text-right pr-4">Action</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          );
-        })}
+                        </thead>
+
+<tbody className="divide-y divide-brand-surface">
+  {items.map((item) => {
+    const currentColor = tempColors[item.id] || "bg-slate-100";
+    const isDark = currentColor.includes("700");
+    
+    // Sadece "System Settings" grubundaysak metadata alanını göster
+    const isSystemSetting = typeName.toLowerCase().includes("system") || item.type?.key === "system_setting";
+
+    return (
+      <tr key={item.id} className="group hover:bg-brand-surface/20">
+        <td className="py-5 pl-4">
+          <span className={`text-[9px] font-mono font-black px-3 py-1 rounded-sm border ${currentColor} ${isDark ? 'text-white border-black/10' : 'text-brand-secondary border-brand-surface'}`}>
+            {item.key}
+          </span>
+        </td>
+
+        <td className="py-5">
+          <input
+            id={`label-${item.id}`}
+            defaultValue={item.label}
+            className="font-black text-brand-secondary bg-transparent outline-none w-full border-b border-transparent focus:border-brand-primary text-sm uppercase"
+          />
+        </td>
+
+        {/* KOŞULLU METADATA ALANI */}
+        <td className="py-5">
+          {isSystemSetting ? (
+            <input
+              id={`metadata-${item.id}`}
+              defaultValue={typeof item.metadata === 'object' ? item.metadata?.value : item.metadata}
+              placeholder="Value..."
+              className="font-mono text-[11px] text-brand-primary bg-brand-primary/5 px-2 py-1 rounded outline-none w-3/4 border border-brand-primary/10 focus:border-brand-primary focus:bg-white transition-all"
+            />
+          ) : (
+            <span className="text-[8px] text-brand-muted/30 italic uppercase font-black tracking-widest">Static</span>
+          )}
+        </td>
+
+        {/* Kat ayarlarıysa renk seçiciyi göster */}
+        {isFloorGroup && (
+          <td className="py-5 text-center">
+            {/* Renk seçici butonu buraya gelecek */}
+          </td>
+        )}
+
+        <td className="py-5 text-right pr-4">
+          <button
+            disabled={updatingId === item.id}
+            onClick={() => handleUpdate(item)}
+            className="bg-brand-secondary text-white px-5 py-2 rounded-ini text-[9px] font-black tracking-widest hover:bg-brand-primary active:scale-95 transition-all"
+          >
+            {updatingId === item.id ? '...' : 'COMMIT'}
+          </button>
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
+
+
+                      </table>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

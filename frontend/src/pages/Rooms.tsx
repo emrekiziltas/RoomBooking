@@ -3,7 +3,6 @@ import { getRooms, updateRoom, getAllLookupFeatures, getFloors, getSystemSetting
 import { PageHeader } from "../components/PageHeader";
 import type { Room, Feature } from '../types/index';
 
-// Kat konfigürasyonu için tip tanımı
 type FloorConfig = { label: string; color: string; border: string; bg: string };
 
 export function Rooms() {
@@ -33,6 +32,7 @@ export function Rooms() {
 
   useEffect(() => { 
     const initLoad = async () => {
+      // Sayfa iskeleti görünüyor, sadece veri loading true
       setLoading(true);
       try {
         await Promise.all([
@@ -180,12 +180,6 @@ export function Rooms() {
 
   const availableFloors = Object.keys(groupedRooms).sort();
 
-  if (loading) return (
-    <div className="h-screen flex items-center justify-center font-brand font-black text-brand-secondary animate-pulse text-xl uppercase tracking-widest">
-      Synchronizing Resources...
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-brand-surface font-brand">
       
@@ -196,7 +190,7 @@ export function Rooms() {
         </div>
       )}
 
-      {/* 1. HEADER SECTION */}
+      {/* 1. HEADER SECTION - DAİMA SABİT */}
       <div className="max-w-7xl mx-auto px-4 pt-4">
         <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
           <div className="flex-1 w-full">
@@ -208,58 +202,69 @@ export function Rooms() {
         </div>
       </div>
 
-      {/* 2. CONTENT SECTION */}
+      {/* 2. CONTENT SECTION - LOADING DURUMUNA GÖRE DEĞİŞEN ALAN */}
       <div className="max-w-7xl mx-auto px-4 mt-8 pb-20">
-        {availableFloors.map((prefix) => {
-          const floorRooms = groupedRooms[prefix] || [];
-          const floor = floors[prefix] || { label: `${prefix} BLOCK`, color: 'text-brand-muted' };
+        {loading ? (
+          // Yükleme Animasyonu (Liste yerine burası görünecek)
+          <div className="h-[50vh] flex flex-col items-center justify-center gap-4 text-brand-secondary/30">
+            <div className="w-8 h-8 border-4 border-brand-surface border-t-brand-secondary rounded-full animate-spin" />
+            <span className="font-black uppercase text-[9px] tracking-[0.4em] animate-pulse">Synchronizing Resources...</span>
+          </div>
+        ) : (
+          // Gerçek Liste
+          <div className="animate-in fade-in duration-500">
+            {availableFloors.map((prefix) => {
+              const floorRooms = groupedRooms[prefix] || [];
+              const floor = floors[prefix] || { label: `${prefix} BLOCK`, color: 'text-brand-muted' };
 
-          return (
-            <div key={prefix} className="mb-12">
-              <div className="flex items-center gap-4 mb-6">
-                <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>{floor.label}</h2>
-                <div className="flex-1 h-px bg-brand-surface" />
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {floorRooms.map((room) => (
-                  <div key={room.id} className="ini-card p-5 flex flex-col h-full bg-white hover:border-brand-primary transition-all group">
-                    <div className="flex justify-between items-start mb-6">
-                      <h3 className={`font-black text-xl ${floor.color} uppercase tracking-tighter leading-none`}>{room.name}</h3>
-                      <div className="flex items-center gap-1 bg-brand-surface px-2 py-1 rounded-sm border border-brand-surface">
-                        <span className="text-xs font-black text-brand-secondary">{room.capacity}</span>
-                        <span className="text-[10px] opacity-50">👤</span>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2 flex-1">
-                      {room.features?.length ? (
-                        room.features.map((f: any) => (
-                          <div key={f.key} className="flex items-center gap-2">
-                            <div className="w-1 h-1 rounded-full bg-brand-primary/40" />
-                            <span className="text-[9px] font-black text-brand-muted uppercase truncate tracking-tight">{f.label}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-[8px] font-black text-brand-muted/30 uppercase italic">No features</span>
-                      )}
-                    </div>
-
-                    <button 
-                      onClick={() => openEditModal(room)} 
-                      className="mt-6 w-full py-2.5 bg-brand-secondary text-white rounded-ini text-[9px] font-black uppercase tracking-widest hover:bg-brand-primary transition-all shadow-sm active:scale-95"
-                    >
-                      Modify
-                    </button>
+              return (
+                <div key={prefix} className="mb-12">
+                  <div className="flex items-center gap-4 mb-6">
+                    <h2 className={`text-[10px] font-black ${floor.color} uppercase tracking-[0.2em]`}>{floor.label}</h2>
+                    <div className="flex-1 h-px bg-brand-surface" />
                   </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {floorRooms.map((room) => (
+                      <div key={room.id} className="ini-card p-5 flex flex-col h-full bg-white hover:border-brand-primary transition-all group">
+                        <div className="flex justify-between items-start mb-6">
+                          <h3 className={`font-black text-xl ${floor.color} uppercase tracking-tighter leading-none`}>{room.name}</h3>
+                          <div className="flex items-center gap-1 bg-brand-surface px-2 py-1 rounded-sm border border-brand-surface">
+                            <span className="text-xs font-black text-brand-secondary">{room.capacity}</span>
+                            <span className="text-[10px] opacity-50">👤</span>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2 flex-1">
+                          {room.features?.length ? (
+                            room.features.map((f: any) => (
+                              <div key={f.key} className="flex items-center gap-2">
+                                <div className="w-1 h-1 rounded-full bg-brand-primary/40" />
+                                <span className="text-[9px] font-black text-brand-muted uppercase truncate tracking-tight">{f.label}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="text-[8px] font-black text-brand-muted/30 uppercase italic">No features</span>
+                          )}
+                        </div>
+
+                        <button 
+                          onClick={() => openEditModal(room)} 
+                          className="mt-6 w-full py-2.5 bg-brand-secondary text-white rounded-ini text-[9px] font-black uppercase tracking-widest hover:bg-brand-primary transition-all shadow-sm active:scale-95"
+                        >
+                          Modify
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* MODAL SECTION */}
+      {/* MODAL SECTION - AYNI KALDI */}
       {editModal && (
         <div className="fixed inset-0 flex items-center justify-center z-[2000] p-4">
           <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setEditModal(null)} />
@@ -296,25 +301,38 @@ export function Rooms() {
                 
                 <div>
                   <label className="text-[8px] font-black text-brand-primary uppercase mb-2 block tracking-widest">Inject Feature</label>
-                  <div className="relative">
-                    <input 
-                      type="text" 
-                      placeholder="SEARCH OR ADD..." 
-                      value={newFeatureName} 
-                      onChange={(e) => handleInputChange(e.target.value)} 
-                      onKeyDown={(e) => e.key === 'Enter' && addNewFeature()} 
-                      className="w-full pl-4 pr-16 py-3.5 bg-brand-surface rounded-ini text-[10px] font-black outline-none focus:ring-1 ring-brand-primary uppercase transition-all" 
-                    />
-                    <button type="button" onClick={addNewFeature} className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-brand-secondary text-white rounded-ini text-[8px] font-black hover:bg-brand-primary uppercase transition-colors">Add</button>
-                    
-                    {suggestions.length > 0 && (
-                      <div className="absolute z-[70] left-0 right-0 mt-1 bg-white border border-brand-surface rounded-ini shadow-2xl max-h-40 overflow-y-auto">
-                        {suggestions.map((s) => (
-                          <button key={s.id || s.key} onClick={() => selectSuggestion(s)} className="w-full text-left px-4 py-3 text-[9px] font-black uppercase hover:bg-brand-surface transition-colors border-b border-brand-surface last:border-0">{s.label}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+         <div className="relative">
+  <input 
+    type="text" 
+    placeholder="SEARCH OR ADD..." 
+    value={newFeatureName} 
+    onChange={(e) => handleInputChange(e.target.value)} 
+    onKeyDown={(e) => e.key === 'Enter' && addNewFeature()} 
+    className="w-full pl-4 pr-16 py-3.5 bg-brand-surface rounded-ini text-[10px] font-black outline-none focus:ring-1 ring-brand-primary uppercase transition-all" 
+  />
+  <button 
+    type="button" 
+    onClick={addNewFeature} 
+    className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-brand-secondary text-white rounded-ini text-[8px] font-black hover:bg-brand-primary uppercase transition-colors"
+  >
+    Add
+  </button>
+  
+  {/* KAYBOLAN ÖNERİ LİSTESİ BURASI */}
+  {suggestions.length > 0 && (
+    <div className="absolute z-[70] left-0 right-0 mt-1 bg-white border border-brand-surface rounded-ini shadow-2xl max-h-40 overflow-y-auto">
+      {suggestions.map((s) => (
+        <button 
+          key={s.id || s.key} 
+          onClick={() => selectSuggestion(s)} 
+          className="w-full text-left px-4 py-3 text-[9px] font-black uppercase hover:bg-brand-surface transition-colors border-b border-brand-surface last:border-0"
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
                 </div>
               </div>
 

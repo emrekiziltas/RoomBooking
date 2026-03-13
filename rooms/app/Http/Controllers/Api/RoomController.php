@@ -24,8 +24,8 @@ public function update(Request $request, $id)
     
 $maxCapacitySetting = \App\Models\LookupValue::where('key', 'max_room_capacity')->first();
 // Eğer ayar bulunamazsa fallback olarak 4 kullan
-$maxVal = $maxCapacitySetting ? (int)$maxCapacitySetting->metadata['value'] : 4;
-
+//$maxVal = $maxCapacitySetting ? (int)$maxCapacitySetting->metadata['value'] : 4;
+$maxVal = $maxCapacitySetting->metadata['value'] ?? 4;
 $request->validate([
     'capacity' => "sometimes|integer|min:1|max:$maxVal", // Dinamik max değer
     'features' => 'sometimes|array',
