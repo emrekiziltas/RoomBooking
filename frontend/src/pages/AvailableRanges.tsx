@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { getAvailableRanges, getFloors } from '../api/rooms';
 import { createBooking } from '../api/bookings';
 import { PageHeader } from "../components/PageHeader";
+import { BookingModal } from "../components/BookingModal";
 
 export function AvailableRanges() {
   const [ranges, setRanges] = useState<any[]>([]);
@@ -216,11 +217,16 @@ export function AvailableRanges() {
                             
                             {hasRange ? (
                               <div className="space-y-3">
-                                <div className="flex justify-between items-center text-[9px] font-black text-brand-secondary bg-brand-surface p-2 rounded-sm">
-                                  <span>{item.filteredRanges[0].start.split(' ')[0].split('-').slice(1).reverse().join('/')}</span>
-                                  <span className="text-brand-muted opacity-30">/</span>
-                                  <span>{item.filteredRanges[0].end.split(' ')[0].split('-').slice(1).reverse().join('/')}</span>
-                                </div>
+                     {/* Eski halini silip bunu yapıştırabilirsin */}
+<div className="flex justify-between items-center text-[9px] font-black text-brand-secondary bg-brand-surface p-2 rounded-sm gap-1">
+  <span className="whitespace-nowrap">
+    {new Date(item.filteredRanges[0].start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
+  </span>
+  <span className="text-brand-muted opacity-30">—</span>
+  <span className="whitespace-nowrap">
+    {new Date(item.filteredRanges[0].end).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
+  </span>
+</div>
                                 <div className="flex justify-center">
                                   <span className="text-[7px] font-black bg-brand-primary/10 text-brand-primary px-2 py-1 rounded-full uppercase tracking-widest">
                                     {item.filteredRanges[0].days} DAYS SEQ
@@ -243,37 +249,18 @@ export function AvailableRanges() {
       </div>
 
       {/* MODAL SECTION */}
-      {isModalOpen && bookingPayload && (
-        <div className="fixed inset-0 flex items-center justify-center z-[2000] p-4">
-          <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsModalOpen(false)} />
-          <div className="ini-card max-w-sm w-full p-8 relative z-10 animate-in zoom-in-95 duration-200 bg-white">
-            <h2 className="text-xl font-black text-brand-secondary uppercase italic text-center mb-8 tracking-tighter">Confirm Sequence</h2>
-            <div className="space-y-6">
-              <div>
-                <label className="text-[8px] font-black uppercase text-brand-primary mb-2 block tracking-widest">Mission Title</label>
-                <input 
-                  autoFocus 
-                  type="text" 
-                  value={bookingPayload.title} 
-                  onChange={(e) => setBookingPayload({ ...bookingPayload, title: e.target.value })} 
-                  placeholder="E.G. LONG TERM PROJECT" 
-                  className="w-full bg-brand-surface border-0 rounded-ini px-4 py-3 font-black text-[11px] outline-none focus:ring-1 ring-brand-primary uppercase transition-all" 
-                />
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  disabled={submitting || !bookingPayload.title} 
-                  onClick={handleBookingSubmit} 
-                  className="flex-[2] bg-brand-secondary text-white py-4 rounded-ini font-black uppercase text-[10px] hover:bg-brand-primary disabled:opacity-30 transition-all shadow-lg active:scale-95"
-                >
-                  {submitting ? 'EXECUTING...' : 'COMMIT SEQ'}
-                </button>
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-brand-surface text-brand-muted py-4 rounded-ini font-black uppercase text-[10px] hover:bg-gray-200 transition-colors">Abort</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        <BookingModal 
+  isOpen={isModalOpen}
+  onClose={() => setIsModalOpen(false)}
+  onConfirm={handleBookingSubmit}
+  title={bookingPayload?.title || ''}
+  setTitle={(val: string) => setBookingPayload({ ...bookingPayload, title: val })}
+  roomName={bookingPayload?.roomName || ''}
+  floorConfig={floors[(bookingPayload?.roomName || "?")[0].toUpperCase()] || { bg: 'bg-brand-surface' }}
+  start={bookingPayload?.start}
+  end={bookingPayload?.end}
+  submitting={submitting}
+/>
     </div>
   );
 }

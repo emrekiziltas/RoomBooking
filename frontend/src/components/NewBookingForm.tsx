@@ -67,7 +67,7 @@ export function NewBookingForm({ rooms, onSuccess, onCancel, showToast }: NewBoo
 
   const formatDateLabel = (dateStr: string) => {
     if (!dateStr) return 'SELECT...';
-    return new Date(dateStr).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }).toUpperCase();
+    return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
   };
 
   const boxHeight = "h-[52px]";

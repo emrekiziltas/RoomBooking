@@ -194,18 +194,18 @@ export function Reports() {
                       </div>
                       <div className="col-span-3">
                         <span className="text-[10px] font-black text-brand-primary uppercase tracking-tight">
-                          {new Date(item.start_time).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          {new Date(item.start_time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </span>
                         <span className="block text-[8px] font-black text-brand-muted">
-                          {new Date(item.start_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(item.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <div className="col-span-3">
                         <span className="text-[10px] font-black text-brand-danger uppercase tracking-tight">
-                          {new Date(item.end_time).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          {new Date(item.end_time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </span>
                         <span className="block text-[8px] font-black text-brand-muted">
-                          {new Date(item.end_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(item.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>

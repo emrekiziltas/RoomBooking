@@ -259,7 +259,7 @@ export function Bookings() {
                                 <div className="min-w-0">
                                   <h4 className="font-black text-brand-secondary text-[11px] uppercase truncate">{b.title}</h4>
                                   <span className="text-[9px] font-bold text-brand-muted italic">
-                                    {new Date(b.start_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} - {new Date(b.end_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(b.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} - {new Date(b.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -4,7 +4,7 @@ import { getAvailableRooms, getFloors } from '../api/rooms';
 import { createBooking } from '../api/bookings';
 import { FloorSection } from '../components/FloorSection';
 import { PageHeader } from "../components/PageHeader";
-
+import { BookingModal } from "../components/BookingModal";
 type FloorConfig = {
   label: string;
   color: string;
@@ -217,83 +217,23 @@ export function Available() {
         )}
       </div>
 
-      {/* BOOKING MODAL */}
-      {bookingModal && (() => {
-        const prefix = bookingModal.room.name?.[0]?.toUpperCase() || 'F';
-        const floor = floorConfigs[prefix] || fallbackFloor;
-        return (
-          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-            <div
-              className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm animate-in fade-in duration-200"
-              onClick={() => setBookingModal(null)}
-            />
-            <div className="ini-card max-w-md w-full p-8 relative z-10 animate-in zoom-in-95 duration-300">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full animate-pulse ${floor.bg}`} />
-                  <div>
-                    <h3 className="text-xl font-black text-brand-secondary uppercase tracking-tighter italic">
-                      Book {bookingModal.room.name}
-                    </h3>
-                    <p className="text-[9px] font-black text-brand-muted uppercase tracking-[0.2em]">
-                      Term: {new Date(selectedDate).toLocaleDateString('en-GB')}
-                    </p>
-                  </div>
-                </div>
-                <button onClick={() => setBookingModal(null)} className="text-brand-muted hover:text-brand-danger transition-colors">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-5">
-                <div>
-                  <label className="text-[9px] font-black text-brand-primary uppercase mb-2 block tracking-widest">Mission Title</label>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={bookingForm.title}
-                    onChange={(e) => setBookingForm({ ...bookingForm, title: e.target.value })}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreateBooking()}
-                    placeholder="E.G. SPRINT PLANNING"
-                    className="w-full px-4 py-3 bg-brand-surface border-0 rounded-ini text-[11px] font-black outline-none focus:ring-1 ring-brand-primary uppercase"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[9px] font-black text-brand-primary uppercase mb-2 block tracking-widest">Start</label>
-                    <input
-                      type="datetime-local"
-                      value={bookingForm.start_time}
-                      onChange={(e) => setBookingForm({ ...bookingForm, start_time: e.target.value })}
-                      className="w-full px-3 py-2 bg-brand-surface border-0 rounded-ini text-[10px] font-black outline-none focus:ring-1 ring-brand-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black text-brand-primary uppercase mb-2 block tracking-widest">End</label>
-                    <input
-                      type="datetime-local"
-                      value={bookingForm.end_time}
-                      onChange={(e) => setBookingForm({ ...bookingForm, end_time: e.target.value })}
-                      className="w-full px-3 py-2 bg-brand-surface border-0 rounded-ini text-[10px] font-black outline-none focus:ring-1 ring-brand-primary"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleCreateBooking}
-                disabled={saving || !bookingForm.title.trim()}
-                className="w-full mt-8 py-4 bg-brand-secondary text-white rounded-ini font-black uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-brand-primary transition-all disabled:opacity-50"
-              >
-                {saving ? 'EXECUTING...' : 'CONFIRM RESERVATION'}
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+     {/* BOOKING MODAL */}
+{bookingModal && (
+  <BookingModal
+    isOpen={!!bookingModal}
+    onClose={() => setBookingModal(null)}
+    roomName={bookingModal.room.name}
+    floorConfig={floorConfigs[bookingModal.room.name?.[0]?.toUpperCase() || 'F'] || fallbackFloor}
+    
+    // YENİ MERKEZİ MODAL İÇİN GEREKLİ PROPLAR:
+    start={bookingForm.start_time} // Mevcut formdaki başlangıç saati
+    end={bookingForm.end_time}     // Mevcut formdaki bitiş saati
+    title={bookingForm.title}      // Formdaki başlık
+    setTitle={(val: string) => setBookingForm({ ...bookingForm, title: val })} // Başlığı güncelleme
+    onConfirm={handleCreateBooking}
+    submitting={saving} // 'saving' state'ini 'submitting' olarak yolluyoruz
+  />
+)}
     </div>
   );
 }

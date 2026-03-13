@@ -214,7 +214,7 @@ export function Calendar() {
               <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic">DAILY OPS</h1>
               <div className="h-6 w-[2px] bg-brand-primary/20 rotate-[20deg]" />
               <p className="text-brand-muted text-[10px] font-black uppercase tracking-[0.2em]">
-                {days[0].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} — {days[days.length - 1].toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                {days[0].toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} — {days[days.length - 1].toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
               </p>
             </div>
           </div>
@@ -268,7 +268,7 @@ export function Calendar() {
                 <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-[10px] w-[120px]">Resources</th>
                 {days.map(day => (
                   <th key={day.toISOString()} className={`p-2 border-r border-brand-surface min-w-[90px] text-center ${day.getTime() === today.getTime() ? 'bg-brand-primary text-white' : ''}`}>
-                    <div className="text-[9px] font-black uppercase opacity-60">{day.toLocaleDateString('tr-TR', { weekday: 'short' })}</div>
+                    <div className="text-[9px] font-black uppercase opacity-60">{day.toLocaleDateString('en-GB', { weekday: 'short' })}</div>
                     <div className="text-lg font-black">{day.getDate()}</div>
                   </th>
                 ))}
