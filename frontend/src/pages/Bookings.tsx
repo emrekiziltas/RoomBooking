@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
-import { getBookings, createBooking, deleteBooking, updateBooking } from '../api/bookings';
+import { getBookings, deleteBooking, updateBooking } from '../api/bookings';
 import { getRooms, getFloors } from '../api/rooms';
 import type { Booking, Room } from '../types/index';
 import { PageHeader } from '../components/PageHeader';
+import { NewBookingForm } from '../components/NewBookingForm'; // Yeni oluşturduğumuz component
 
 const SLOTS = {
   morning: { start: '08:30:00', end: '12:30:00', label: '08:30' },
@@ -21,16 +22,52 @@ export function Bookings() {
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
 
-  const [form, setForm] = useState({
+  const [editForm, setEditForm] = useState({
     room_id: '',
     title: '',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: '',
     start_slot: 'morning',
-    end_date: new Date().toISOString().split('T')[0],
+    end_date: '',
     end_slot: 'afternoon',
   });
 
-  const [editForm, setEditForm] = useState({ ...form });
+  // Veri çekme fonksiyonu (Sayfa yüklendiğinde ve yeni kayıt eklendiğinde çağrılır)
+  const fetchData = async () => {
+    try {
+      const [bRes, rRes, fRes] = await Promise.all([
+        getBookings(),
+        getRooms(),
+        getFloors()
+      ]);
+      const apiBookings = bRes.data || [];
+      const apiRooms = rRes.data || [];
+      const apiFloors = fRes.data ?? [];
+      const finalRoomConfig: Record<string, any> = {};
+
+      apiRooms.forEach((room: any) => {
+        const prefix = room.key?.toUpperCase() || room.name[0].toUpperCase();
+        const floor = apiFloors.find((f: any) => f.key.toUpperCase() === prefix);
+        const rawClass = floor?.bg_color_class || '';
+        const finalBorderClass = rawClass ? rawClass.replace('text-', 'border-') : 'border-brand-muted';
+        const roomNameUpper = room.name.toUpperCase();
+        const config = { label: roomNameUpper, color: finalBorderClass };
+        finalRoomConfig[room.id] = config;
+        finalRoomConfig[roomNameUpper] = config;
+      });
+
+      setBookings(apiBookings);
+      setRooms(apiRooms);
+      setRoomConfigs(finalRoomConfig);
+    } catch (err) {
+      setToast({ msg: "Veri yükleme hatası!", type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   useEffect(() => {
     if (toast) {
@@ -39,42 +76,7 @@ export function Bookings() {
     }
   }, [toast]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [bRes, rRes, fRes] = await Promise.all([
-          getBookings(),
-          getRooms(),
-          getFloors()
-        ]);
-        const apiBookings = bRes.data || [];
-        const apiRooms = rRes.data || [];
-        const apiFloors = fRes.data ?? [];
-        const finalRoomConfig: Record<string, any> = {};
-
-        apiRooms.forEach((room: any) => {
-          const prefix = room.key?.toUpperCase() || room.name[0].toUpperCase();
-          const floor = apiFloors.find((f: any) => f.key.toUpperCase() === prefix);
-          const rawClass = floor?.bg_color_class || '';
-          const finalBorderClass = rawClass ? rawClass.replace('text-', 'border-') : 'border-brand-muted';
-          const roomNameUpper = room.name.toUpperCase();
-          const config = { label: roomNameUpper, color: finalBorderClass };
-          finalRoomConfig[room.id] = config;
-          finalRoomConfig[roomNameUpper] = config;
-        });
-
-        setBookings(apiBookings);
-        setRooms(apiRooms);
-        setRoomConfigs(finalRoomConfig);
-      } catch (err) {
-        setToast({ msg: "Veri yükleme hatası!", type: 'error' });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
-
+  // Gruplama Mantığı
   const groupedBookings = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -144,25 +146,6 @@ export function Bookings() {
     }
   };
 
-  const handleCreate = async () => {
-    if (!form.room_id || !form.title) {
-      setToast({ msg: "Lütfen alanları doldurun.", type: 'error' });
-      return;
-    }
-    const startTime = `${form.start_date} ${SLOTS[form.start_slot as keyof typeof SLOTS].start}`;
-    const endTime = `${form.end_date} ${SLOTS[form.end_slot as keyof typeof SLOTS].end}`;
-    try {
-      await createBooking({ ...form, room_id: Number(form.room_id), start_time: startTime, end_time: endTime, color: '#4f46e5' });
-      setShowForm(false);
-      setForm({ ...form, title: '' });
-      const updated = await getBookings();
-      setBookings(updated.data);
-      setToast({ msg: "Kayıt başarıyla oluşturuldu.", type: 'success' });
-    } catch (err: any) {
-      setToast({ msg: err.response?.data?.message || "Hata oluştu.", type: 'error' });
-    }
-  };
-
   return (
     <div className="min-h-screen bg-brand-surface font-brand">
       {/* 1. TOASTER UI */}
@@ -179,7 +162,7 @@ export function Bookings() {
         </div>
       )}
 
-      {/* 2. HEADER - HER ZAMAN SABİT */}
+      {/* 2. HEADER */}
       <div className="max-w-7xl mx-auto px-4 pt-4">
         <PageHeader
           highlight="DAILY"
@@ -199,8 +182,21 @@ export function Bookings() {
         />
       </div>
 
-      {/* 3. FILTER & FORM SECTION - SABİT */}
+      {/* 3. NEW ENTRY FORM (COMPONENT OLARAK ÇAĞRILIYOR) */}
       <div className="max-w-7xl mx-auto px-4 space-y-4 mb-8 mt-6">
+        {showForm && (
+          <NewBookingForm 
+            rooms={rooms}
+            onSuccess={() => {
+              setShowForm(false);
+              fetchData();
+            }}
+            onCancel={() => setShowForm(false)}
+            showToast={(msg, type) => setToast({ msg, type })}
+          />
+        )}
+
+        {/* Filtreleme */}
         <div className="ini-card p-3 flex items-center gap-4">
           <span className="text-xs">🏢</span>
           <select 
@@ -216,40 +212,9 @@ export function Bookings() {
             ))}
           </select>
         </div>
-
-        {showForm && (
-          <div className="ini-card p-6 border-t-4 border-brand-primary animate-in slide-in-from-top-2">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                   <input type="text" placeholder="Title / Guest Name" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-xs outline-none uppercase" />
-                   <select value={form.room_id} onChange={e => setForm({...form, room_id: e.target.value})} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-xs outline-none uppercase">
-                      <option value="">Select Resource</option>
-                      {rooms.map(r => <option key={r.id} value={r.id}>{r.name.toUpperCase()}</option>)}
-                   </select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="space-y-2">
-                      <input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px]" />
-                      <select value={form.start_slot} onChange={e => setForm({...form, start_slot: e.target.value})} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px]">
-                         <option value="morning">Morning (08:30)</option>
-                         <option value="afternoon">Afternoon (12:30)</option>
-                      </select>
-                   </div>
-                   <div className="space-y-2">
-                      <input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px]" />
-                      <select value={form.end_slot} onChange={e => setForm({...form, end_slot: e.target.value})} className="w-full bg-brand-surface rounded-ini px-4 py-3 font-black text-[10px]">
-                         <option value="morning">Ends 12:30</option>
-                         <option value="afternoon">Ends 17:30</option>
-                      </select>
-                   </div>
-                </div>
-             </div>
-             <button onClick={handleCreate} className="mt-6 w-full bg-brand-primary text-white py-3 rounded-ini font-black text-[11px] tracking-widest uppercase">Create Reservation</button>
-          </div>
-        )}
       </div>
 
-      {/* 4. LISTING SECTION - LOADING'E BAĞLI OLAN TEK YER */}
+      {/* 4. LISTING SECTION */}
       <div className="max-w-7xl mx-auto px-4 pb-20">
         {loading ? (
           <div className="h-[40vh] flex flex-col items-center justify-center gap-4 text-brand-secondary/30">
@@ -298,7 +263,17 @@ export function Bookings() {
                                   </span>
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => { setEditingBooking(b); setEditForm({ title: b.title, room_id: String(b.room?.id || b.room_id || ''), start_date: b.start_time.slice(0, 10), end_date: b.end_time.slice(0, 10), start_slot: b.start_time.includes('08:30') ? 'morning' : 'afternoon', end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' }); }} className="p-1 text-[10px] hover:scale-110">✏️</button>
+                                  <button onClick={() => { 
+                                    setEditingBooking(b); 
+                                    setEditForm({ 
+                                      title: b.title, 
+                                      room_id: String(b.room?.id || b.room_id || ''), 
+                                      start_date: b.start_time.slice(0, 10), 
+                                      end_date: b.end_time.slice(0, 10), 
+                                      start_slot: b.start_time.includes('08:30') ? 'morning' : 'afternoon', 
+                                      end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' 
+                                    }); 
+                                  }} className="p-1 text-[10px] hover:scale-110">✏️</button>
                                   <button onClick={() => handleDelete(b.id)} className="p-1 text-[10px] hover:scale-110">🗑️</button>
                                 </div>
                               </div>
@@ -315,15 +290,15 @@ export function Bookings() {
         )}
       </div>
 
-      {/* 5. UPDATE MODAL - PORTAL MANTIĞI */}
+      {/* 5. UPDATE MODAL */}
       {editingBooking && (
         <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm flex items-center justify-center z-50 p-6">
           <div className="ini-card p-8 w-full max-w-xl animate-in zoom-in-95 duration-200">
             <h2 className="text-xl font-black mb-6 text-brand-secondary uppercase italic border-b-2 border-brand-surface pb-2">Modify Schedule</h2>
             <div className="space-y-4">
               <div className="space-y-1">
-                 <span className="text-[8px] font-black text-brand-muted uppercase ml-2 tracking-widest">Description</span>
-                 <input type="text" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-2.5 font-black text-xs outline-none uppercase" />
+                  <span className="text-[8px] font-black text-brand-muted uppercase ml-2 tracking-widest">Description</span>
+                  <input type="text" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-2.5 font-black text-xs outline-none uppercase" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-brand-surface/50 p-4 rounded-ini space-y-2">
