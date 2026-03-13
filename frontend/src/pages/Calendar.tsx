@@ -150,7 +150,10 @@ export function Calendar() {
         start_time: newStart,
         end_time: newEnd,
       } as any);
-      setToast({ msg: "RE-ASSIGNED SUCCESSFULLY ✓", type: 'success' });
+      setToast({ 
+  msg: `RE-ASSIGNED ${draggedBooking?.title.toUpperCase()} TO ${rooms.find(r => Number(r.id) === Number(targetRoomId))?.name.toUpperCase()} ✓`, 
+  type: 'success' 
+});
       await fetchData();
     } catch (err) {
       setToast({ msg: "ACTION FAILED", type: 'error' });
@@ -173,9 +176,12 @@ export function Calendar() {
       setIsFormOpen(false);
       setBookingPayload(p => ({ ...p, title: '' }));
       await fetchData(); 
-      setToast({ msg: "SEQUENCE COMMITTED ✓", type: 'success' });
+     setToast({ 
+  msg: `RE-ASSIGNED ${draggedBooking?.title.toUpperCase()} TO ${rooms.find(r => Number(r.id) === Number(targetRoomId))?.name.toUpperCase()} ✓`, 
+  type: 'success' 
+});
     } catch (error) {
-      setToast({ msg: "FAILED", type: 'error' });
+      setToast({ msg: "ACTION DENIED: PLEASE CHECK RESOURCE ", type: 'error' });
     } finally {
       setSubmitting(false);
     }
