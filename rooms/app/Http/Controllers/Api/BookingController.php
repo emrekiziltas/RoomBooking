@@ -194,7 +194,7 @@ class BookingController extends Controller
         BookingLog::create([
             'booking_id' => $booking->id,
             'user_id'    => auth()->id(),
-            'action'     => 'moved',
+            'action'     => 'updated',
             'old_data'   => $oldData,
             'new_data'   => $booking->fresh()->toArray(),
         ]);

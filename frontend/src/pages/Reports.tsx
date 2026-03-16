@@ -9,15 +9,14 @@ type Tab = 'daily' | 'range' | 'audit';
 const ACTION_STYLES: Record<string, string> = {
   created: 'bg-brand-primary/10 text-brand-primary',
   updated: 'bg-amber-100 text-amber-700',
-  moved:   'bg-purple-100 text-purple-700',
   deleted: 'bg-brand-danger/10 text-brand-danger',
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  title:      'Title',
-  room_id:    'Room',
+  title: 'Title',
+  room_id: 'Room',
   start_time: 'Check-in',
-  end_time:   'Check-out',
+  end_time: 'Check-out',
 };
 
 export function Reports() {
@@ -28,11 +27,22 @@ export function Reports() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('daily');
   const [auditLimit, setAuditLimit] = useState(20);
+  const [auditAction, setAuditAction] = useState<'all' | 'created' | 'updated' | 'moved' | 'deleted'>('all');
 
   const today = new Date().toISOString().split('T')[0];
   const [rangeStart, setRangeStart] = useState(today);
   const [rangeEnd, setRangeEnd] = useState(today);
 
+  const formatDiffValue = (val: any) => {
+  if (!val) return '—';
+  const str = String(val);
+  // Eğer değer bir ISO tarihi ise (içinde T varsa)
+  if (str.includes('T')) {
+    // T'yi boşluğa çevir ve saniye/milisaniye kısmını kes (ilk 16 karakter: YYYY-MM-DD HH:mm)
+    return str.replace('T', ' ').substring(0, 16);
+  }
+  return str;
+};
   useEffect(() => {
     setLoading(true);
     Promise.all([getBookings(), getRooms()])
@@ -85,6 +95,7 @@ export function Reports() {
 
   return (
     <div className="min-h-screen bg-brand-surface font-brand">
+      {/* HEADER SECTION */}
       <div className="max-w-7xl mx-auto px-4 pt-4 print:hidden">
         <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
           <div className="flex-1 w-full">
@@ -96,6 +107,7 @@ export function Reports() {
         </div>
       </div>
 
+      {/* TABS SECTION */}
       <div className="max-w-7xl mx-auto px-4 mt-6 print:hidden">
         <div className="flex gap-1 bg-white border-2 border-brand-surface rounded-ini p-1 w-fit shadow-sm">
           {(['daily', 'range', 'audit'] as Tab[]).map((t) => (
@@ -178,10 +190,10 @@ export function Reports() {
                     ) : (
                       rangeData.map((item: any) => (
                         <div key={item.id} className="grid grid-cols-12 px-4 py-4 items-center">
-                          <span className="col-span-4 font-black text-brand-secondary text-[10px]">{item.title}</span>
-                          <span className="col-span-2 text-[10px] font-black">{item.room?.name || '—'}</span>
-                          <span className="col-span-3 text-[10px]">{new Date(item.start_time).toLocaleDateString('en-GB')}</span>
-                          <span className="col-span-3 text-[10px]">{new Date(item.end_time).toLocaleDateString('en-GB')}</span>
+                          <span className="col-span-4 font-black text-brand-secondary text-[10px] uppercase truncate pr-4">{item.title}</span>
+                          <span className="col-span-2 text-[10px] font-black uppercase text-brand-muted">{item.room?.name || '—'}</span>
+                          <span className="col-span-3 text-[10px] font-medium tabular-nums">{new Date(item.start_time).toLocaleDateString('en-GB')}</span>
+                          <span className="col-span-3 text-[10px] font-medium tabular-nums">{new Date(item.end_time).toLocaleDateString('en-GB')}</span>
                         </div>
                       ))
                     )}
@@ -197,90 +209,94 @@ export function Reports() {
                   <h3 className="text-[10px] font-black text-brand-secondary uppercase tracking-widest italic">
                     System Audit — Last {auditLimit} Entries
                   </h3>
-                  <select
-                    value={auditLimit}
-                    onChange={(e) => setAuditLimit(Number(e.target.value))}
-                    className="bg-white border-2 border-brand-surface rounded-ini px-3 py-1.5 font-black text-[10px] uppercase outline-none"
-                  >
-                    <option value={20}>Last 20</option>
-                    <option value={50}>Last 50</option>
-                    <option value={100}>Last 100</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1 bg-white border-2 border-brand-surface rounded-ini p-1">
+                      {(['all', 'created', 'updated', 'deleted'] as const).map(a => (
+                        <button
+                          key={a}
+                          onClick={() => setAuditAction(a)}
+                          className={`px-3 py-1 rounded-ini font-black text-[9px] uppercase tracking-widest transition-all ${auditAction === a ? 'bg-brand-secondary text-white' : 'text-brand-muted hover:text-brand-secondary'}`}
+                        >
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                    <select
+                      value={auditLimit}
+                      onChange={(e) => setAuditLimit(Number(e.target.value))}
+                      className="bg-white border-2 border-brand-surface rounded-ini px-3 py-1.5 font-black text-[10px] uppercase outline-none"
+                    >
+                      <option value={20}>Last 20</option>
+                      <option value={50}>Last 50</option>
+                      <option value={100}>Last 100</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="ini-card bg-white shadow-sm border border-brand-surface/50 overflow-hidden">
-                  {/* TABLE HEADER */}
                   <div className="grid grid-cols-12 px-4 py-3 bg-brand-surface/30 border-b border-brand-surface text-[8px] font-black text-brand-muted uppercase">
-                    <span className="col-span-1">Action</span>
+                    <span className="col-span-1">Act</span>
                     <span className="col-span-3">Guest / Title</span>
-                    <span className="col-span-2">Room</span>
-                    <span className="col-span-4">Changes</span>
+                    <span className="col-span-1 text-center">Room</span>
+                    <span className="col-span-5 pl-4">Changes & History</span>
                     <span className="col-span-2 text-right">Date</span>
                   </div>
 
                   <div className="divide-y divide-brand-surface">
-                    {auditLogs.length === 0 ? (
-                      <div className="py-12 text-center text-brand-muted opacity-20 italic uppercase text-[7px]">No Logs Found</div>
-                    ) : (
-                      auditLogs.map((log: any) => {
+                    {(() => {
+                      const filtered = auditAction === 'all' ? auditLogs : auditLogs.filter((l: any) => l.action === auditAction);
+                      if (filtered.length === 0) return (
+                        <div className="py-12 text-center text-brand-muted opacity-20 italic uppercase text-[7px]">No Logs Found</div>
+                      );
+
+                      return filtered.map((log: any) => {
                         const title = log.new_data?.title || log.old_data?.title || '—';
                         const diff: any[] = log.diff || [];
-
                         return (
-                          <div key={log.id} className="grid grid-cols-12 px-4 py-4 items-start hover:bg-brand-surface/20 transition-all">
-                            {/* ACTION BADGE */}
+                          <div key={log.id} className="grid grid-cols-12 px-4 py-4 items-start hover:bg-brand-surface/20 transition-all border-b border-brand-surface/10">
                             <div className="col-span-1">
-                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${ACTION_STYLES[log.action] || 'bg-brand-surface text-brand-muted'}`}>
+                              <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase ${ACTION_STYLES[log.action] || 'bg-brand-surface text-brand-muted'}`}>
                                 {log.action}
                               </span>
                             </div>
-
-                            {/* TITLE */}
-                            <span className="col-span-3 font-black text-brand-secondary text-[10px] uppercase truncate pt-0.5">
+                            <span className="col-span-3 font-black text-brand-secondary text-[10px] uppercase truncate pr-4">
                               {title}
                             </span>
-
-                            {/* ROOM */}
-                            <span className="col-span-2 pt-0.5">
-                              <span className="bg-brand-secondary/10 text-brand-secondary px-2 py-0.5 rounded text-[9px] font-black">
+                            <div className="col-span-1 flex justify-center">
+                              <span className="bg-brand-secondary/10 text-brand-secondary px-2 py-0.5 rounded text-[9px] font-black border border-brand-secondary/20">
                                 {log.room || '—'}
                               </span>
-                            </span>
-
-                            {/* DIFF */}
-                            <div className="col-span-4 flex flex-col gap-1">
+                            </div>
+                            <div className="col-span-5 flex flex-col gap-1.5 border-l border-brand-surface pl-4">
                               {diff.length === 0 ? (
-                                <span className="text-[8px] text-brand-muted italic">
-                                  {log.action === 'created' ? 'New record' : log.action === 'deleted' ? 'Record removed' : '—'}
+                                <span className="text-[8px] text-brand-muted/40 italic uppercase tracking-tighter">
+                                  {log.action === 'created' ? '• Initializing record' : '• System note: No field changes'}
                                 </span>
                               ) : (
                                 diff.map((d: any) => (
-                                  <div key={d.field} className="flex items-center gap-1 flex-wrap">
-                                    <span className="text-[7px] font-black text-brand-muted uppercase tracking-widest">
-                                      {FIELD_LABELS[d.field] || d.field}
-                                    </span>
-                                   
-     <span className="text-[8px] font-black text-brand-danger line-through truncate max-w-[80px]">
-  {formatDiffValue(d.field, d.old)}
-</span>
-<span className="text-[8px] text-brand-muted">→</span>
-<span className="text-[8px] font-black text-brand-primary truncate max-w-[80px]">
-  {formatDiffValue(d.field, d.new)}
-</span>
-                                   
+                                  <div key={d.field} className="flex items-center gap-2 text-[9px]">
+                                    {/* Değişen satır burası: String(d.old) yerine formatDiffValue(d.old) kullanıyoruz */}
+<div className="flex items-center bg-brand-surface/30 rounded px-1.5 py-0.5 border border-brand-surface shadow-sm overflow-hidden">
+  <span className="text-brand-danger/60 line-through px-1 truncate max-w-[120px] text-[8px]">
+    {formatDiffValue(d.old)}
+  </span>
+  <span className="text-brand-muted px-1 opacity-30">→</span>
+  <span className="text-brand-primary font-bold px-1 truncate max-w-[120px] text-[8px]">
+    {formatDiffValue(d.new)}
+  </span>
+</div>
+                            
                                   </div>
                                 ))
                               )}
                             </div>
-
-                            {/* DATE */}
-                            <span className="col-span-2 text-right text-[8px] font-black text-brand-muted italic pt-0.5">
-                              {log.created_at ? new Date(log.created_at).toLocaleString('en-GB') : '—'}
+                            <span className="col-span-2 text-right text-[8px] font-black text-brand-muted tabular-nums pt-0.5 italic">
+                              {log.created_at ? new Date(log.created_at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—'}
                             </span>
                           </div>
                         );
-                      })
-                    )}
+                      });
+                    })()}
                   </div>
                 </div>
               </div>
@@ -292,6 +308,8 @@ export function Reports() {
   );
 }
 
+// --- HELPERS ---
+
 function StatCard({ label, value, color }: any) {
   return (
     <div className="ini-card p-6 bg-white border border-brand-surface shadow-sm">
@@ -300,16 +318,7 @@ function StatCard({ label, value, color }: any) {
     </div>
   );
 }
-function formatDiffValue(field: string, value: any): string {
-  if (value === null || value === undefined) return '—';
-  if (field === 'start_time' || field === 'end_time') {
-    return new Date(value).toLocaleDateString('en-GB', {
-      day: '2-digit', month: 'short', year: '2-digit',
-      hour: '2-digit', minute: '2-digit'
-    });
-  }
-  return String(value);
-}
+
 function DataColumn({ title, data, accentColor, isRoomOnly }: any) {
   const isEmpty = data.length === 0;
   return (
@@ -329,7 +338,7 @@ function DataColumn({ title, data, accentColor, isRoomOnly }: any) {
           ) : (
             data.map((item: any) => (
               <div key={item.id} className="px-4 py-4 flex justify-between items-center hover:bg-brand-surface/20 transition-all">
-                <span className="font-black text-brand-secondary uppercase truncate text-[10px] tracking-tight leading-none">{item.title}</span>
+                <span className="font-black text-brand-secondary uppercase truncate text-[10px] tracking-tight leading-none pr-2">{item.title}</span>
                 <span className="text-[9px] font-black bg-brand-secondary text-white px-2 py-1 rounded-sm uppercase tracking-tighter shadow-sm shrink-0 ml-2">
                   {item.room?.name}
                 </span>
