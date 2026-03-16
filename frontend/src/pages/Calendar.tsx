@@ -4,6 +4,8 @@ import { getBookings, updateBooking, deleteBooking } from '../api/bookings';
 import { NewBookingForm } from '../components/NewBookingForm';
 import type { Room, Booking } from '../types/index';
 
+// --- HELPERS ---
+
 function getDaysForPeriod(startDate: Date, daysCount: number) {
   const days = [];
   for (let i = 0; i < daysCount; i++) {
@@ -21,6 +23,12 @@ function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boo
   return 'bg-white border-brand-surface text-slate-200';
 }
 
+// Tarihleri görselleştirirken T harfini uçurur, API'ye gönderirken güvenli format sağlar
+const cleanISO = (val: any) => {
+  if (!val) return '—';
+  return String(val).replace('T', ' ').split('.')[0];
+};
+
 const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
   const [localValue, setLocalValue] = useState(value);
   useEffect(() => { setLocalValue(value); }, [value]);
@@ -35,6 +43,8 @@ const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: 
   );
 };
 
+// --- MAIN COMPONENT ---
+
 export function Calendar() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -42,7 +52,6 @@ export function Calendar() {
   const [viewWindow, setViewWindow] = useState<7 | 15>(15);
   const [floorConfigs, setFloorConfigs] = useState<Record<string, any>>({});
   const [collapsedFloors, setCollapsedFloors] = useState<string[]>(['M', 'S']);
-  const [auditLogs, setAuditLogs] = useState<Booking[]>([]); // null yerine []
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -56,8 +65,6 @@ export function Calendar() {
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
   const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Drag ile click çakışmasını önlemek için
   const isDraggingRef = useRef(false);
 
   const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
@@ -82,41 +89,51 @@ export function Calendar() {
       });
       setFloorConfigs(configs);
       setLoading(false);
-    } catch (err) { console.error("Veri hatası:", err); }
+    } catch (err) { console.error("Data error:", err); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleDragOverFloor = (e: React.DragEvent, floor: string) => {
-    e.preventDefault();
-    if (!dragTimeoutRef.current && collapsedFloors.includes(floor)) {
-      dragTimeoutRef.current = setTimeout(() => {
-        setCollapsedFloors(prev => prev.filter(f => f !== floor));
-        dragTimeoutRef.current = null;
-      }, 500);
-    }
+  // --- LOGIC: BOOKINGS FOR DAY ---
+
+  const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
+    const ts = new Date(day).setHours(0, 0, 0, 0);
+    return bookings.filter(b => {
+      const bRoomId = b.room?.id || (b as any).room_id;
+      // API'den gelen boşluklu tarihi ISO uyumlu hale getir (Safari/Firefox uyumu için)
+      const start = new Date(b.start_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
+      const end = new Date(b.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
+      return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
+    });
   };
 
-  const handleDragLeaveFloor = () => {
-    if (dragTimeoutRef.current) {
-      clearTimeout(dragTimeoutRef.current);
-      dragTimeoutRef.current = null;
+  // --- SHADOW & CONFLICT SYSTEM ---
+
+  const getShadowState = (roomId: number, dateStr: string) => {
+    if (!draggedBooking || !dragOverCell) return { isShadow: false, isConflict: false };
+    if (dragOverCell.roomId !== roomId) return { isShadow: false, isConflict: false };
+
+    const startTs = new Date(draggedBooking.start_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
+    const endTs = new Date(draggedBooking.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
+    const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24));
+
+    const currentCellDate = new Date(dateStr);
+    const dragStartDate = new Date(dragOverCell.date);
+    const dragEndDate = new Date(dragStartDate);
+    dragEndDate.setDate(dragStartDate.getDate() + durationDays);
+
+    const isShadow = currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
+    
+    let isConflict = false;
+    if (isShadow) {
+      const existing = getBookingsForRoomAndDay(roomId, currentCellDate);
+      isConflict = existing.some(b => b.id !== draggedBooking.id);
     }
+
+    return { isShadow, isConflict };
   };
 
-const getIsShadow = (roomId: number, dateStr: string) => {
-  if (!draggedBooking || !dragOverCell) return false;
-  if (dragOverCell.roomId !== roomId) return false;
-  const startTs = new Date(draggedBooking.start_time).setHours(0, 0, 0, 0);
-  const endTs = new Date(draggedBooking.end_time).setHours(0, 0, 0, 0);
-  // end günü dahil değil, o yüzden -1 gün
-  const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24)) ;
-  const currentCellDate = new Date(dateStr);
-  const dragStartDate = new Date(dragOverCell.date);
-  const dragEndDate = new Date(dragStartDate);
-  dragEndDate.setDate(dragStartDate.getDate() + durationDays);
-  return currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
-};
+  // --- EVENT HANDLERS ---
 
   const handleDragStart = (e: React.DragEvent, booking: Booking) => {
     isDraggingRef.current = true;
@@ -127,7 +144,6 @@ const getIsShadow = (roomId: number, dateStr: string) => {
   const handleDragEnd = () => {
     setDraggedBooking(null);
     setDragOverCell(null);
-    // Kısa bir gecikme ile sıfırla — click event'i önlemek için
     setTimeout(() => { isDraggingRef.current = false; }, 100);
   };
 
@@ -139,24 +155,55 @@ const getIsShadow = (roomId: number, dateStr: string) => {
   const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
     e.preventDefault();
     if (!draggedBooking) return;
-    const durationMs = new Date(draggedBooking.end_time).getTime() - new Date(draggedBooking.start_time).getTime();
-    const newStart = `${targetDate} 08:30:00`;
-    const newEnd = new Date(new Date(targetDate).getTime() + durationMs).toISOString().split('T')[0] + " 17:30:00";
+
+    // 1. Süreyi Hesapla
+    const oldStart = new Date(draggedBooking.start_time.replace(' ', 'T')).getTime();
+    const oldEnd = new Date(draggedBooking.end_time.replace(' ', 'T')).getTime();
+    const durationMs = oldEnd - oldStart;
+
+    // 2. Yeni Tarih Objesini Oluştur (Hata burada düzeltildi)
+    const newStartObj = new Date(targetDate + "T08:30:00");
+    const newEndObj = new Date(newStartObj.getTime() + durationMs);
+
+    // 3. Çakışma Kontrolü (Logical Comparison)
+    const hasConflict = bookings.some(b => {
+      if (b.id === draggedBooking.id) return false;
+      const bRoomId = b.room?.id || (b as any).room_id;
+      if (Number(bRoomId) !== Number(targetRoomId)) return false;
+
+      const bStart = new Date(b.start_time.replace(' ', 'T')).getTime();
+      const bEnd = new Date(b.end_time.replace(' ', 'T')).getTime();
+      
+      return newStartObj.getTime() < bEnd && newEndObj.getTime() > bStart;
+    });
 
     try {
+      // 4. API'ye Gönder (Format: "YYYY-MM-DD HH:mm:ss")
+      const finalStart = cleanISO(newStartObj.toISOString());
+      const finalEnd = cleanISO(newEndObj.toISOString());
+
       await updateBooking(draggedBooking.id, {
         room_id: targetRoomId,
         title: draggedBooking.title,
-        start_time: newStart,
-        end_time: newEnd,
+        start_time: finalStart,
+        end_time: finalEnd,
       } as any);
-      setToast({
-        msg: `RE-ASSIGNED ${draggedBooking.title.toUpperCase()} TO ${rooms.find(r => Number(r.id) === Number(targetRoomId))?.name.toUpperCase()} ✓`,
-        type: 'success'
+
+      setToast({ 
+        msg: `${draggedBooking.title.toUpperCase()} MOVED ${hasConflict ? '(OVERLAP)' : '✓'}`, 
+        type: hasConflict ? 'error' : 'success' 
       });
       await fetchData();
-    } catch (err) {
-      setToast({ msg: "ACTION FAILED", type: 'error' });
+    } catch (err: any) {
+  // Backend'den gelen spesifik hata mesajını çıkarıyoruz
+  const backendMessage = err.response?.data?.message || err.response?.data?.error || "SERVER REJECTED ACTION";
+  
+  setToast({ 
+    msg: `FAILED: ${backendMessage.toUpperCase()}`, 
+    type: 'error' 
+  });
+  console.error("Backend Error Details:", err.response?.data);
+
     } finally {
       setDraggedBooking(null);
       setDragOverCell(null);
@@ -179,19 +226,9 @@ const getIsShadow = (roomId: number, dateStr: string) => {
     return Array.from(floorSet).sort();
   }, [rooms]);
 
-  function getBookingsForRoomAndDay(roomId: number, day: Date) {
-    const ts = new Date(day).setHours(0, 0, 0, 0);
-    return bookings.filter(b => {
-      const bRoomId = b.room?.id || (b as any).room_id;
-      const start = new Date(b.start_time).setHours(0, 0, 0, 0);
-const end = new Date(b.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
-return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
-    });
-  }
-
   if (loading) return (
     <div className="h-screen flex items-center justify-center font-black text-brand-secondary animate-pulse text-2xl tracking-widest italic uppercase">
-      Loading...
+      Updating Matrix...
     </div>
   );
 
@@ -220,29 +257,11 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
               <button onClick={() => setStartDate(new Date(new Date().setHours(0, 0, 0, 0)))} className="px-4 h-8 text-[9px] font-black uppercase">Today</button>
               <button onClick={moveNext} className="w-8 h-8 font-bold text-xs">→</button>
             </div>
-            <button
-              onClick={() => setIsFormOpen(!isFormOpen)}
-              className={`px-6 py-3 font-black uppercase text-[10px] rounded-ini transition-all shadow-md ${isFormOpen ? 'bg-brand-primary text-white' : 'bg-brand-secondary text-white'}`}
-            >
+            <button onClick={() => setIsFormOpen(!isFormOpen)} className={`px-6 py-3 font-black uppercase text-[10px] rounded-ini transition-all shadow-md ${isFormOpen ? 'bg-brand-primary text-white' : 'bg-brand-secondary text-white'}`}>
               {isFormOpen ? '✕ CLOSE' : '+ NEW ENTRY'}
             </button>
           </div>
         </div>
-
-        {isFormOpen && (
-          <div className="mb-6">
-            <NewBookingForm
-              rooms={rooms}
-              onSuccess={async () => {
-                setIsFormOpen(false);
-                await fetchData();
-                setToast({ msg: "RESERVATION CREATED ✓", type: 'success' });
-              }}
-              onCancel={() => setIsFormOpen(false)}
-              showToast={(msg, type) => setToast({ msg, type })}
-            />
-          </div>
-        )}
       </div>
 
       <div className="px-4">
@@ -262,12 +281,7 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
             <tbody>
               {dynamicFloors.map(floor => (
                 <Fragment key={floor}>
-                  <tr
-                    onClick={() => setCollapsedFloors(prev => prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor])}
-                    onDragOver={(e) => handleDragOverFloor(e, floor)}
-                    onDragLeave={handleDragLeaveFloor}
-                    className="cursor-pointer bg-brand-secondary/90 text-white h-10 transition-all"
-                  >
+                  <tr onClick={() => setCollapsedFloors(prev => prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor])} className="cursor-pointer bg-brand-secondary/90 text-white h-10 transition-all">
                     <td className="sticky left-0 z-30 bg-brand-secondary px-4 text-center font-black uppercase text-[10px]">
                       {collapsedFloors.includes(floor) ? '▶' : '▼'} {floorConfigs[floor]?.label || floor}
                     </td>
@@ -275,14 +289,14 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
                   </tr>
                   {!collapsedFloors.includes(floor) && rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
                     <tr key={room.id} className="border-b border-brand-surface group">
-                      <td className="sticky left-0 z-30 bg-white p-4 border-r border-brand-primary/5 text-center shadow-sm">
+                      <td className="sticky left-0 z-30 bg-white p-4 border-r border-brand-primary/5 text-center">
                         <div className="font-black text-brand-secondary text-sm uppercase">{room.name}</div>
                         <div className="text-[7px] font-black text-brand-primary mt-1 uppercase bg-brand-primary/10 rounded-full px-2 py-0.5 inline-block">Cap: {room.capacity}</div>
                       </td>
                       {days.map(day => {
                         const dateStr = day.toISOString().split('T')[0];
                         const dayBookings = getBookingsForRoomAndDay(room.id, day);
-                        const isShadow = getIsShadow(room.id, dateStr);
+                        const { isShadow, isConflict } = getShadowState(room.id, dateStr);
 
                         return (
                           <td
@@ -291,7 +305,10 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
                             onDrop={(e) => handleDrop(e, room.id, dateStr)}
                             className={`p-0.5 border-r border-brand-surface min-w-[40px] min-h-14 relative transition-all 
                               ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
-                              ${isShadow ? 'bg-brand-primary ring-4 ring-brand-primary ring-inset scale-95 z-10 shadow-2xl' : ''}
+                              ${isShadow ? (isConflict 
+                                ? 'bg-brand-danger ring-4 ring-brand-danger ring-inset z-20 animate-pulse' 
+                                : 'bg-brand-primary ring-4 ring-brand-primary ring-inset scale-95 z-10') 
+                              : ''}
                             `}
                           >
                             <div className="flex flex-col gap-0.5 relative z-10">
@@ -302,7 +319,7 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
                                   onDragStart={(e) => handleDragStart(e, b)}
                                   onDragEnd={handleDragEnd}
                                   onClick={() => handleBookingClick(b)}
-                                  className="px-1.5 py-1 bg-brand-secondary text-white rounded-sm text-[7px] font-black uppercase cursor-grab truncate"
+                                  className="px-1.5 py-1 bg-brand-secondary text-white rounded-sm text-[7px] font-black uppercase cursor-grab truncate shadow-sm"
                                 >
                                   {b.title}
                                 </div>
@@ -323,8 +340,8 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
       {/* EDIT MODAL */}
       {editingBooking && (
         <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-md flex items-center justify-center z-[5000] p-4">
-          <div className="bg-white rounded-ini p-8 w-full max-w-lg shadow-2xl animate-in zoom-in duration-200">
-            <h2 className="text-2xl font-black text-brand-secondary mb-6 uppercase italic underline decoration-brand-primary decoration-4 underline-offset-8">Update</h2>
+          <div className="bg-white rounded-ini p-8 w-full max-w-lg shadow-2xl">
+            <h2 className="text-2xl font-black text-brand-secondary mb-6 uppercase italic underline decoration-brand-primary decoration-4">Update</h2>
             <div className="space-y-4">
               <FastInput value={editForm.title} onChange={(val) => setEditForm({ ...editForm, title: val })} placeholder="TITLE..." />
               <div className="grid grid-cols-2 gap-4">
@@ -334,19 +351,20 @@ return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
             </div>
             <div className="flex gap-3 mt-8">
               <button onClick={async () => {
-                await updateBooking(editingBooking.id, { title: editForm.title.toUpperCase(), start_time: `${editForm.start_date} 08:30:00`, end_time: `${editForm.end_date} 17:30:00` } as any);
+                const finalStart = `${editForm.start_date} 08:30:00`;
+                const finalEnd = `${editForm.end_date} 17:30:00`;
+                await updateBooking(editingBooking.id, { title: editForm.title.toUpperCase(), start_time: finalStart, end_time: finalEnd } as any);
                 setEditingBooking(null); fetchData(); setToast({ msg: "UPDATED ✓", type: 'success' });
               }} className="flex-1 bg-brand-primary text-white py-4 rounded font-black uppercase text-xs">Confirm</button>
-              <button onClick={async () => { if (confirm("Sil?")) { await deleteBooking(editingBooking.id); setEditingBooking(null); fetchData(); } }} className="px-6 bg-brand-danger text-white rounded font-black uppercase text-xs">Delete</button>
+              <button onClick={async () => { if (confirm("Delete?")) { await deleteBooking(editingBooking.id); setEditingBooking(null); fetchData(); } }} className="px-6 bg-brand-danger text-white rounded font-black uppercase text-xs">Delete</button>
               <button onClick={() => setEditingBooking(null)} className="px-6 bg-brand-surface text-brand-muted rounded font-black uppercase text-xs">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* TOAST */}
       {toast && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[6000] animate-in fade-in slide-in-from-top-10">
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[6000] animate-bounce">
           <div className={`px-8 py-4 rounded-full shadow-2xl border-2 bg-white ${toast.type === 'error' ? 'border-brand-danger' : 'border-brand-primary'}`}>
             <p className="font-black text-brand-secondary text-sm uppercase italic">{toast.msg}</p>
           </div>
