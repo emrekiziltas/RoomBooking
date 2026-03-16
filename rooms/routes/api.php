@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\LookupController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\BookingLogController;
+
 
 // --- 🔓 Herkese Açık ---
 Route::post('auth/register', [AuthController::class, 'register']);
@@ -29,6 +31,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('rooms', RoomController::class)->only(['index', 'show']);
 
     // --- 📅 Rezervasyon İşlemleri ---
+    Route::get('booking-logs', [BookingLogController::class, 'index']);
+    Route::get('bookings/recent', [BookingController::class, 'recent']);
     Route::patch('bookings/{id}/move', [BookingController::class, 'move']);
     Route::patch('bookings/{id}/resize', [BookingController::class, 'resize']);
     Route::apiResource('bookings', BookingController::class);

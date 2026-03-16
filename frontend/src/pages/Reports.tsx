@@ -1,17 +1,33 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getBookings } from '../api/bookings';
-import { getRooms } from '../api/rooms';
+import { getRooms, getAuditLogs } from '../api/rooms';
 import { PageHeader } from "../components/PageHeader";
 import type { Booking, Room } from '../types';
 
-type Tab = 'daily' | 'range';
+type Tab = 'daily' | 'range' | 'audit';
+
+const ACTION_STYLES: Record<string, string> = {
+  created: 'bg-brand-primary/10 text-brand-primary',
+  updated: 'bg-amber-100 text-amber-700',
+  moved:   'bg-purple-100 text-purple-700',
+  deleted: 'bg-brand-danger/10 text-brand-danger',
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  title:      'Title',
+  room_id:    'Room',
+  start_time: 'Check-in',
+  end_time:   'Check-out',
+};
 
 export function Reports() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('daily');
+  const [auditLimit, setAuditLimit] = useState(20);
 
   const today = new Date().toISOString().split('T')[0];
   const [rangeStart, setRangeStart] = useState(today);
@@ -19,12 +35,24 @@ export function Reports() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getBookings(), getRooms()]).then(([b, r]) => {
-      setBookings(b.data || b || []);
-      setRooms(r.data || r || []);
-      setLoading(false);
-    });
+    Promise.all([getBookings(), getRooms()])
+      .then(([b, r]) => {
+        setBookings(b.data || b || []);
+        setRooms(r.data || r || []);
+      })
+      .catch(err => console.error("Load Error:", err))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'audit') {
+      setLoading(true);
+      getAuditLogs(auditLimit)
+        .then(data => setAuditLogs(data))
+        .catch(() => setAuditLogs([]))
+        .finally(() => setLoading(false));
+    }
+  }, [auditLimit, activeTab]);
 
   const reportData = useMemo(() => {
     const dateStr = new Date(reportDate).toISOString().split('T')[0];
@@ -57,162 +85,206 @@ export function Reports() {
 
   return (
     <div className="min-h-screen bg-brand-surface font-brand">
-
-      {/* HEADER */}
       <div className="max-w-7xl mx-auto px-4 pt-4 print:hidden">
         <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
           <div className="flex-1 w-full">
-            <PageHeader highlight="OPERATIONAL" title="REPORTS" subtitle="Daily & Range Analysis" />
+            <PageHeader highlight="OPERATIONAL" title="REPORTS" subtitle="Matrix Analysis & Audit Logs" />
           </div>
-          <button
-            onClick={() => window.print()}
-            className="bg-brand-secondary text-white px-6 py-3.5 rounded-ini font-black uppercase text-[9px] tracking-widest hover:bg-brand-primary transition-all shadow-lg active:scale-95 mt-4 md:mt-0"
-          >
+          <button onClick={() => window.print()} className="bg-brand-secondary text-white px-6 py-3.5 rounded-ini font-black uppercase text-[9px] tracking-widest hover:bg-brand-primary transition-all shadow-lg active:scale-95 mt-4 md:mt-0">
             PRINT
           </button>
         </div>
       </div>
 
-      {/* TABS */}
       <div className="max-w-7xl mx-auto px-4 mt-6 print:hidden">
-        <div className="flex gap-1 bg-white border-2 border-brand-surface rounded-ini p-1 w-fit">
-          <button
-            onClick={() => setActiveTab('daily')}
-            className={`px-6 py-2 rounded-ini font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'daily' ? 'bg-brand-secondary text-white shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
-          >
-            Daily
-          </button>
-          <button
-            onClick={() => setActiveTab('range')}
-            className={`px-6 py-2 rounded-ini font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'range' ? 'bg-brand-secondary text-white shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
-          >
-            Date Range
-          </button>
+        <div className="flex gap-1 bg-white border-2 border-brand-surface rounded-ini p-1 w-fit shadow-sm">
+          {(['daily', 'range', 'audit'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              className={`px-6 py-2 rounded-ini font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === t ? 'bg-brand-secondary text-white shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
+            >
+              {t === 'audit' ? 'Audit Log' : t === 'daily' ? 'Daily' : 'Date Range'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* CONTENT */}
       <div className="max-w-7xl mx-auto px-4 mt-6 pb-20">
         {loading ? (
           <div className="h-[50vh] flex flex-col items-center justify-center gap-4 text-brand-secondary/30">
             <div className="w-8 h-8 border-4 border-brand-surface border-t-brand-secondary rounded-full animate-spin" />
-            <span className="font-black uppercase text-[9px] tracking-[0.4em] animate-pulse">Synchronizing Matrix...</span>
+            <span className="font-black uppercase text-[9px] tracking-[0.4em] animate-pulse">Synchronizing...</span>
           </div>
-        ) : activeTab === 'daily' ? (
-
-          /* DAILY TAB */
-          <>
-            <div className="flex justify-end mb-6">
-              <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
-                <span className="text-[8px] font-black text-brand-muted uppercase tracking-widest">Date</span>
-                <input
-                  type="date"
-                  value={reportDate}
-                  onChange={(e) => setReportDate(e.target.value)}
-                  className="bg-transparent font-black outline-none text-brand-secondary cursor-pointer text-[10px] uppercase"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-500">
-              <div className="flex flex-col gap-4">
-                <StatCard label="Arrivals" value={reportData.checkIns.length} color="text-brand-primary" />
-                <DataColumn title="Expected Arrivals" data={reportData.checkIns} accentColor="text-brand-primary" />
-              </div>
-              <div className="flex flex-col gap-4">
-                <StatCard label="Departures" value={reportData.checkOuts.length} color="text-brand-danger" />
-                <DataColumn title="Expected Departures" data={reportData.checkOuts} accentColor="text-brand-danger" />
-              </div>
-              <div className="flex flex-col gap-4">
-                <StatCard label="In-House" value={reportData.stayOvers.length} color="text-brand-info" />
-                <DataColumn title="Current Stays" data={reportData.stayOvers} accentColor="text-brand-info" />
-              </div>
-              <div className="flex flex-col gap-4">
-                <StatCard label="Vacant" value={reportData.vacantRooms.length} color="text-brand-muted" />
-                <DataColumn title="Available Now" data={reportData.vacantRooms} accentColor="text-brand-muted" isRoomOnly />
-              </div>
-            </div>
-          </>
-
         ) : (
-
-          /* RANGE TAB */
           <>
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
-                  <span className="text-[8px] font-black text-brand-primary uppercase tracking-widest">From</span>
-                  <input
-                    type="date"
-                    value={rangeStart}
-                    onChange={e => setRangeStart(e.target.value)}
-                    className="bg-transparent font-black outline-none text-brand-secondary cursor-pointer text-[10px]"
-                  />
-                </div>
-                <span className="text-brand-muted font-black text-xs">→</span>
-                <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
-                  <span className="text-[8px] font-black text-brand-danger uppercase tracking-widest">To</span>
-                  <input
-                    type="date"
-                    value={rangeEnd}
-                    onChange={e => setRangeEnd(e.target.value)}
-                    className="bg-transparent font-black outline-none text-brand-secondary cursor-pointer text-[10px]"
-                  />
-                </div>
-              </div>
-              <StatCard label="Total Bookings" value={rangeData.length} color="text-brand-primary" />
-            </div>
-
-            <div className="ini-card bg-white overflow-hidden shadow-sm border border-brand-surface/50 animate-in fade-in duration-500">
-              {/* TABLE HEADER */}
-              <div className="grid grid-cols-12 px-4 py-3 border-b-2 border-brand-surface bg-brand-surface/50">
-                <span className="col-span-4 text-[9px] font-black text-brand-muted uppercase tracking-widest">Guest / Title</span>
-                <span className="col-span-2 text-[9px] font-black text-brand-muted uppercase tracking-widest">Room</span>
-                <span className="col-span-3 text-[9px] font-black text-brand-muted uppercase tracking-widest">Check-in</span>
-                <span className="col-span-3 text-[9px] font-black text-brand-muted uppercase tracking-widest">Check-out</span>
-              </div>
-
-              {/* TABLE ROWS */}
-              <div className="divide-y divide-brand-surface">
-                {rangeData.length === 0 ? (
-                  <div className="py-16 text-center text-brand-muted font-black uppercase text-[8px] tracking-[0.3em] opacity-30 italic">
-                    No bookings in this range
+            {/* DAILY TAB */}
+            {activeTab === 'daily' && (
+              <div className="animate-in fade-in duration-500">
+                <div className="flex justify-end mb-6">
+                  <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
+                    <span className="text-[8px] font-black text-brand-muted uppercase tracking-widest">Date</span>
+                    <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-transparent font-black outline-none text-brand-secondary cursor-pointer text-[10px] uppercase" />
                   </div>
-                ) : (
-                  rangeData.map((item: any) => (
-                    <div key={item.id} className="grid grid-cols-12 px-4 py-4 hover:bg-brand-surface/20 transition-all items-center">
-                      <div className="col-span-4 flex flex-col gap-0.5">
-                        <span className="font-black text-brand-secondary uppercase text-[11px] tracking-tight leading-none truncate">{item.title}</span>
-                        <span className="text-[7px] font-black text-brand-muted uppercase tracking-widest opacity-50 italic">
-                          {item.room?.floor?.label || 'HQ'}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-[10px] font-black bg-brand-secondary text-white px-2 py-1 rounded-sm uppercase tracking-tighter shadow-sm">
-                          {item.room?.name || '—'}
-                        </span>
-                      </div>
-                      <div className="col-span-3">
-                        <span className="text-[10px] font-black text-brand-primary uppercase tracking-tight">
-                          {new Date(item.start_time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                        <span className="block text-[8px] font-black text-brand-muted">
-                          {new Date(item.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <div className="col-span-3">
-                        <span className="text-[10px] font-black text-brand-danger uppercase tracking-tight">
-                          {new Date(item.end_time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                        <span className="block text-[8px] font-black text-brand-muted">
-                          {new Date(item.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="flex flex-col gap-4">
+                    <StatCard label="Arrivals" value={reportData.checkIns.length} color="text-brand-primary" />
+                    <DataColumn title="Expected Arrivals" data={reportData.checkIns} accentColor="text-brand-primary" />
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <StatCard label="Departures" value={reportData.checkOuts.length} color="text-brand-danger" />
+                    <DataColumn title="Expected Departures" data={reportData.checkOuts} accentColor="text-brand-danger" />
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <StatCard label="In-House" value={reportData.stayOvers.length} color="text-brand-info" />
+                    <DataColumn title="Current Stays" data={reportData.stayOvers} accentColor="text-brand-info" />
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <StatCard label="Vacant" value={reportData.vacantRooms.length} color="text-brand-muted" />
+                    <DataColumn title="Available Now" data={reportData.vacantRooms} accentColor="text-brand-muted" isRoomOnly />
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* RANGE TAB */}
+            {activeTab === 'range' && (
+              <div className="animate-in fade-in duration-500">
+                <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
+                      <span className="text-[8px] font-black text-brand-primary uppercase tracking-widest">From</span>
+                      <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="bg-transparent font-black outline-none text-brand-secondary text-[10px]" />
+                    </div>
+                    <span className="text-brand-muted font-black text-xs">→</span>
+                    <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
+                      <span className="text-[8px] font-black text-brand-danger uppercase tracking-widest">To</span>
+                      <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="bg-transparent font-black outline-none text-brand-secondary text-[10px]" />
+                    </div>
+                  </div>
+                  <StatCard label="Total Bookings" value={rangeData.length} color="text-brand-primary" />
+                </div>
+                <div className="ini-card bg-white overflow-hidden shadow-sm border border-brand-surface/50">
+                  <div className="grid grid-cols-12 px-4 py-3 bg-brand-surface/50 text-[9px] font-black text-brand-muted uppercase">
+                    <span className="col-span-4">Guest / Title</span>
+                    <span className="col-span-2">Room</span>
+                    <span className="col-span-3">Check-in</span>
+                    <span className="col-span-3">Check-out</span>
+                  </div>
+                  <div className="divide-y divide-brand-surface">
+                    {rangeData.length === 0 ? (
+                      <div className="py-16 text-center text-brand-muted opacity-30 italic">No bookings in this range</div>
+                    ) : (
+                      rangeData.map((item: any) => (
+                        <div key={item.id} className="grid grid-cols-12 px-4 py-4 items-center">
+                          <span className="col-span-4 font-black text-brand-secondary text-[10px]">{item.title}</span>
+                          <span className="col-span-2 text-[10px] font-black">{item.room?.name || '—'}</span>
+                          <span className="col-span-3 text-[10px]">{new Date(item.start_time).toLocaleDateString('en-GB')}</span>
+                          <span className="col-span-3 text-[10px]">{new Date(item.end_time).toLocaleDateString('en-GB')}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* AUDIT TAB */}
+            {activeTab === 'audit' && (
+              <div className="animate-in fade-in duration-500">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-[10px] font-black text-brand-secondary uppercase tracking-widest italic">
+                    System Audit — Last {auditLimit} Entries
+                  </h3>
+                  <select
+                    value={auditLimit}
+                    onChange={(e) => setAuditLimit(Number(e.target.value))}
+                    className="bg-white border-2 border-brand-surface rounded-ini px-3 py-1.5 font-black text-[10px] uppercase outline-none"
+                  >
+                    <option value={20}>Last 20</option>
+                    <option value={50}>Last 50</option>
+                    <option value={100}>Last 100</option>
+                  </select>
+                </div>
+
+                <div className="ini-card bg-white shadow-sm border border-brand-surface/50 overflow-hidden">
+                  {/* TABLE HEADER */}
+                  <div className="grid grid-cols-12 px-4 py-3 bg-brand-surface/30 border-b border-brand-surface text-[8px] font-black text-brand-muted uppercase">
+                    <span className="col-span-1">Action</span>
+                    <span className="col-span-3">Guest / Title</span>
+                    <span className="col-span-2">Room</span>
+                    <span className="col-span-4">Changes</span>
+                    <span className="col-span-2 text-right">Date</span>
+                  </div>
+
+                  <div className="divide-y divide-brand-surface">
+                    {auditLogs.length === 0 ? (
+                      <div className="py-12 text-center text-brand-muted opacity-20 italic uppercase text-[7px]">No Logs Found</div>
+                    ) : (
+                      auditLogs.map((log: any) => {
+                        const title = log.new_data?.title || log.old_data?.title || '—';
+                        const diff: any[] = log.diff || [];
+
+                        return (
+                          <div key={log.id} className="grid grid-cols-12 px-4 py-4 items-start hover:bg-brand-surface/20 transition-all">
+                            {/* ACTION BADGE */}
+                            <div className="col-span-1">
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${ACTION_STYLES[log.action] || 'bg-brand-surface text-brand-muted'}`}>
+                                {log.action}
+                              </span>
+                            </div>
+
+                            {/* TITLE */}
+                            <span className="col-span-3 font-black text-brand-secondary text-[10px] uppercase truncate pt-0.5">
+                              {title}
+                            </span>
+
+                            {/* ROOM */}
+                            <span className="col-span-2 pt-0.5">
+                              <span className="bg-brand-secondary/10 text-brand-secondary px-2 py-0.5 rounded text-[9px] font-black">
+                                {log.room || '—'}
+                              </span>
+                            </span>
+
+                            {/* DIFF */}
+                            <div className="col-span-4 flex flex-col gap-1">
+                              {diff.length === 0 ? (
+                                <span className="text-[8px] text-brand-muted italic">
+                                  {log.action === 'created' ? 'New record' : log.action === 'deleted' ? 'Record removed' : '—'}
+                                </span>
+                              ) : (
+                                diff.map((d: any) => (
+                                  <div key={d.field} className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-[7px] font-black text-brand-muted uppercase tracking-widest">
+                                      {FIELD_LABELS[d.field] || d.field}
+                                    </span>
+                                   
+     <span className="text-[8px] font-black text-brand-danger line-through truncate max-w-[80px]">
+  {formatDiffValue(d.field, d.old)}
+</span>
+<span className="text-[8px] text-brand-muted">→</span>
+<span className="text-[8px] font-black text-brand-primary truncate max-w-[80px]">
+  {formatDiffValue(d.field, d.new)}
+</span>
+                                   
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            {/* DATE */}
+                            <span className="col-span-2 text-right text-[8px] font-black text-brand-muted italic pt-0.5">
+                              {log.created_at ? new Date(log.created_at).toLocaleString('en-GB') : '—'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -228,48 +300,44 @@ function StatCard({ label, value, color }: any) {
     </div>
   );
 }
-
+function formatDiffValue(field: string, value: any): string {
+  if (value === null || value === undefined) return '—';
+  if (field === 'start_time' || field === 'end_time') {
+    return new Date(value).toLocaleDateString('en-GB', {
+      day: '2-digit', month: 'short', year: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+  return String(value);
+}
 function DataColumn({ title, data, accentColor, isRoomOnly }: any) {
   const isEmpty = data.length === 0;
-
   return (
     <div className="space-y-4">
       <div className="border-b-2 border-brand-surface pb-3">
         <h3 className={`font-black uppercase tracking-[0.1em] text-[10px] italic ${accentColor}`}>{title}</h3>
       </div>
-
       <div className="ini-card bg-white overflow-hidden shadow-sm border border-brand-surface/50 min-h-[100px]">
         <div className="divide-y divide-brand-surface">
           {isRoomOnly ? (
             data.sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((room: any) => (
               <div key={room.id} className="px-4 py-3.5 flex justify-between items-center hover:bg-brand-surface/20 transition-all group">
-                <div className="flex flex-col">
-                  <span className="font-black text-brand-secondary text-[11px] tracking-tight">{room.name}</span>
-                  <span className="text-[6px] font-black text-brand-muted uppercase tracking-widest">{room.floor?.label || 'UNIT'}</span>
-                </div>
+                <span className="font-black text-brand-secondary text-[11px] tracking-tight">{room.name}</span>
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-success opacity-30 group-hover:opacity-100 transition-opacity" />
               </div>
             ))
           ) : (
             data.map((item: any) => (
               <div key={item.id} className="px-4 py-4 flex justify-between items-center hover:bg-brand-surface/20 transition-all">
-                <div className="flex flex-col gap-1 overflow-hidden">
-                  <span className="font-black text-brand-secondary uppercase truncate text-[10px] tracking-tight leading-none">{item.title}</span>
-                  <span className="text-[6px] font-black text-brand-muted uppercase tracking-widest opacity-60 italic truncate">
-                    {item.room?.floor?.label || 'HQ'}
-                  </span>
-                </div>
+                <span className="font-black text-brand-secondary uppercase truncate text-[10px] tracking-tight leading-none">{item.title}</span>
                 <span className="text-[9px] font-black bg-brand-secondary text-white px-2 py-1 rounded-sm uppercase tracking-tighter shadow-sm shrink-0 ml-2">
                   {item.room?.name}
                 </span>
               </div>
             ))
           )}
-
           {isEmpty && (
-            <div className="py-12 text-center text-brand-muted font-black uppercase text-[7px] tracking-[0.3em] opacity-20 italic">
-              Empty Log
-            </div>
+            <div className="py-12 text-center text-brand-muted font-black uppercase text-[7px] tracking-[0.3em] opacity-20 italic">Empty Log</div>
           )}
         </div>
       </div>

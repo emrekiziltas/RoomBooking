@@ -22,6 +22,15 @@ export const deleteBooking = async (id: number) => {
   return response.data;
 };
 
+
+export const getRecentBookings = async (limit: number = 10) => {
+  return api.get('/bookings/recent', { params: { limit } });
+};
+
+export const getAuditLogs = async (limit: number = 20) => {
+  const res = await api.get('/booking-logs', { params: { limit } });
+  return res.data?.data || [];
+};
 //export const updateBooking = async (id: number, data: { title?: string; color?: string }) => {
 export const updateBooking = async (
   id: number, 

@@ -47,3 +47,9 @@ export const getAllLookupFeatures = async () => {
   const response = await api.get('/lookup-values/type/3'); // Backend'de Features tipi 3 ise
   return response.data;
 };
+
+
+export const getAuditLogs = async (limit: number = 20) => {
+  const res = await api.get('/booking-logs', { params: { limit } });
+  return res.data?.data || [];
+};

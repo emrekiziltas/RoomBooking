@@ -1,10 +1,9 @@
 import { useEffect, useState, Fragment, useMemo, useRef } from 'react';
 import { getRooms, getFloors } from '../api/rooms';
 import { getBookings, updateBooking, deleteBooking } from '../api/bookings';
-import { NewBookingForm } from '../components//NewBookingForm';
+import { NewBookingForm } from '../components/NewBookingForm';
 import type { Room, Booking } from '../types/index';
 
-// --- HELPERS ---
 function getDaysForPeriod(startDate: Date, daysCount: number) {
   const days = [];
   for (let i = 0; i < daysCount; i++) {
@@ -25,15 +24,11 @@ function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boo
 const FastInput = ({ value, onChange, placeholder }: { value: string, onChange: (val: string) => void, placeholder: string }) => {
   const [localValue, setLocalValue] = useState(value);
   useEffect(() => { setLocalValue(value); }, [value]);
-
   return (
     <input
       type="text"
       value={localValue}
-      onChange={(e) => {
-        setLocalValue(e.target.value);
-        onChange(e.target.value);
-      }}
+      onChange={(e) => { setLocalValue(e.target.value); onChange(e.target.value); }}
       className="w-full bg-brand-surface border-0 rounded-ini px-6 py-4 font-black text-brand-base outline-none uppercase focus:ring-2 ring-brand-primary transition-all placeholder:text-brand-muted"
       placeholder={placeholder}
     />
@@ -47,6 +42,7 @@ export function Calendar() {
   const [viewWindow, setViewWindow] = useState<7 | 15>(15);
   const [floorConfigs, setFloorConfigs] = useState<Record<string, any>>({});
   const [collapsedFloors, setCollapsedFloors] = useState<string[]>(['M', 'S']);
+  const [auditLogs, setAuditLogs] = useState<Booking[]>([]); // null yerine []
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -60,6 +56,9 @@ export function Calendar() {
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
   const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Drag ile click çakışmasını önlemek için
+  const isDraggingRef = useRef(false);
 
   const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
   const today = new Date();
@@ -88,7 +87,6 @@ export function Calendar() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- DRAG MECHANICS ---
   const handleDragOverFloor = (e: React.DragEvent, floor: string) => {
     e.preventDefault();
     if (!dragTimeoutRef.current && collapsedFloors.includes(floor)) {
@@ -106,22 +104,31 @@ export function Calendar() {
     }
   };
 
-  const getIsShadow = (roomId: number, dateStr: string) => {
-    if (!draggedBooking || !dragOverCell) return false;
-    if (dragOverCell.roomId !== roomId) return false;
-    const startTs = new Date(draggedBooking.start_time).setHours(0, 0, 0, 0);
-    const endTs = new Date(draggedBooking.end_time).setHours(0, 0, 0, 0);
-    const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24));
-    const currentCellDate = new Date(dateStr);
-    const dragStartDate = new Date(dragOverCell.date);
-    const dragEndDate = new Date(dragStartDate);
-    dragEndDate.setDate(dragStartDate.getDate() + durationDays);
-    return currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
-  };
+const getIsShadow = (roomId: number, dateStr: string) => {
+  if (!draggedBooking || !dragOverCell) return false;
+  if (dragOverCell.roomId !== roomId) return false;
+  const startTs = new Date(draggedBooking.start_time).setHours(0, 0, 0, 0);
+  const endTs = new Date(draggedBooking.end_time).setHours(0, 0, 0, 0);
+  // end günü dahil değil, o yüzden -1 gün
+  const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24)) ;
+  const currentCellDate = new Date(dateStr);
+  const dragStartDate = new Date(dragOverCell.date);
+  const dragEndDate = new Date(dragStartDate);
+  dragEndDate.setDate(dragStartDate.getDate() + durationDays);
+  return currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
+};
 
   const handleDragStart = (e: React.DragEvent, booking: Booking) => {
+    isDraggingRef.current = true;
     setDraggedBooking(booking);
     e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setDraggedBooking(null);
+    setDragOverCell(null);
+    // Kısa bir gecikme ile sıfırla — click event'i önlemek için
+    setTimeout(() => { isDraggingRef.current = false; }, 100);
   };
 
   const handleDragOver = (e: React.DragEvent, roomId: number, date: string) => {
@@ -156,6 +163,14 @@ export function Calendar() {
     }
   };
 
+  const handleBookingClick = (b: Booking) => {
+    if (isDraggingRef.current) return;
+    setEditingBooking(b);
+    const startDate = b.start_time.split(/[\sT]/)[0];
+    const endDate = b.end_time.split(/[\sT]/)[0];
+    setEditForm({ title: b.title, start_date: startDate, end_date: endDate });
+  };
+
   const moveNext = () => setStartDate(d => { const n = new Date(d); n.setDate(n.getDate() + viewWindow); return n; });
   const movePrev = () => setStartDate(d => { const n = new Date(d); n.setDate(n.getDate() - viewWindow); return n; });
 
@@ -169,8 +184,8 @@ export function Calendar() {
     return bookings.filter(b => {
       const bRoomId = b.room?.id || (b as any).room_id;
       const start = new Date(b.start_time).setHours(0, 0, 0, 0);
-      const end = new Date(b.end_time).setHours(0, 0, 0, 0);
-      return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
+const end = new Date(b.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
+return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
     });
   }
 
@@ -224,7 +239,7 @@ export function Calendar() {
                 setToast({ msg: "RESERVATION CREATED ✓", type: 'success' });
               }}
               onCancel={() => setIsFormOpen(false)}
-                showToast={(msg, type) => setToast({ msg, type })}  // ← bu var mı?
+              showToast={(msg, type) => setToast({ msg, type })}
             />
           </div>
         )}
@@ -285,13 +300,8 @@ export function Calendar() {
                                   key={b.id}
                                   draggable
                                   onDragStart={(e) => handleDragStart(e, b)}
-                                  onDragEnd={() => { setDraggedBooking(null); setDragOverCell(null); }}
-                                  onClick={() => {
-                                    setEditingBooking(b);
-                                    const startDate = b.start_time.split(/[\sT]/)[0];
-                                    const endDate = b.end_time.split(/[\sT]/)[0];
-                                    setEditForm({ title: b.title, start_date: startDate, end_date: endDate });
-                                  }}
+                                  onDragEnd={handleDragEnd}
+                                  onClick={() => handleBookingClick(b)}
                                   className="px-1.5 py-1 bg-brand-secondary text-white rounded-sm text-[7px] font-black uppercase cursor-grab truncate"
                                 >
                                   {b.title}
