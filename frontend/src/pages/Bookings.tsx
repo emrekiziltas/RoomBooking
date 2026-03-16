@@ -21,6 +21,7 @@ export function Bookings() {
   const [toast, setToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
+const [deleteConfirmBooking, setDeleteConfirmBooking] = useState<Booking | null>(null);
 
   const [editForm, setEditForm] = useState({
     room_id: '',
@@ -59,7 +60,7 @@ export function Bookings() {
       setRooms(apiRooms);
       setRoomConfigs(finalRoomConfig);
     } catch (err) {
-      setToast({ msg: "Veri yükleme hatası!", type: 'error' });
+      setToast({ msg: "DATA LOAD FAILED!", type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -129,22 +130,22 @@ export function Bookings() {
       });
       setBookings(bookings.map(b => b.id === editingBooking.id ? res.data : b));
       setEditingBooking(null);
-      setToast({ msg: "Güncelleme başarılı.", type: 'success' });
+      setToast({ msg: "UPDATE SUCCESSFUL ✓", type: 'success' });
     } catch (err: any) {
-      setToast({ msg: err.response?.data?.message || "Güncellenemedi.", type: 'error' });
+      setToast({ msg: err.response?.data?.message || "UPDATE FAILED", type: 'error' });
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Emin misiniz?')) return;
-    try {
-      await deleteBooking(id);
-      setBookings(bookings.filter(b => b.id !== id));
-      setToast({ msg: "Kayıt silindi.", type: 'success' });
-    } catch (err) {
-      setToast({ msg: "Silme hatası.", type: 'error' });
-    }
-  };
+const handleDelete = async (id: number) => {
+  try {
+    await deleteBooking(id);
+    setBookings(bookings.filter(b => b.id !== id));
+    setToast({ msg: "ENTRY REMOVED ✓", type: 'success' });
+    setDeleteConfirmBooking(null); // State'i burada sıfırlıyoruz
+  } catch (err) {
+    setToast({ msg: "DELETE FAILED", type: 'error' });
+  }
+};
 
   return (
     <div className="min-h-screen bg-brand-surface font-brand">
@@ -157,7 +158,7 @@ export function Bookings() {
             </div>
             <p className="font-black text-brand-secondary text-sm uppercase tracking-tight italic whitespace-nowrap">{toast.msg}</p>
             <div className="w-[2px] h-4 bg-brand-surface mx-2" />
-            <button onClick={() => setToast(null)} className="text-brand-muted hover:text-brand-secondary font-black text-sm px-2">KAPAT</button>
+            <button onClick={() => setToast(null)} className="text-brand-muted hover:text-brand-secondary font-black text-sm px-2">CLOSE</button>
           </div>
         </div>
       )}
@@ -274,7 +275,15 @@ export function Bookings() {
                                       end_slot: b.end_time.includes('12:30') ? 'morning' : 'afternoon' 
                                     }); 
                                   }} className="p-1 text-[10px] hover:scale-110">✏️</button>
-                                  <button onClick={() => handleDelete(b.id)} className="p-1 text-[10px] hover:scale-110">🗑️</button>
+
+
+<button 
+  onClick={() => setDeleteConfirmBooking(b)} 
+  className="p-1 text-[10px] hover:scale-110 relative z-10"
+>
+  🗑️
+</button>
+
                                 </div>
                               </div>
                             ))}
@@ -326,6 +335,48 @@ export function Bookings() {
           </div>
         </div>
       )}
+
+{/* CUSTOM DELETE CONFIRMATION MODAL WITH DETAILS */}
+{deleteConfirmBooking && (
+  <div className="fixed inset-0 bg-brand-secondary/90 backdrop-blur-md flex items-center justify-center z-[6000] p-6">
+    <div className="bg-white border-4 border-brand-danger p-8 w-full max-w-sm shadow-[0_0_50px_rgba(239,68,68,0.3)] animate-in zoom-in-95 duration-200 text-center">
+      <div className="w-16 h-16 bg-brand-danger/10 text-brand-danger rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+        ⚠️
+      </div>
+      <h2 className="text-xl font-black text-brand-secondary uppercase italic mb-2">Confirm Deletion</h2>
+      
+      {/* DETAILS BOX */}
+      <div className="bg-brand-surface p-4 rounded-ini mb-6 border border-brand-danger/20">
+        <p className="text-[10px] font-black text-brand-danger uppercase tracking-widest mb-1">Target Entry:</p>
+        <p className="text-xl font-black text-brand-secondary uppercase italic mb-2>">{deleteConfirmBooking.title}</p>
+        <p className="text-sm font-black text-brand-secondary uppercase truncate">{deleteConfirmBooking.room?.name}</p>
+        <p className="text-[9px] font-bold text-brand-muted mt-1 uppercase">
+          {new Date(deleteConfirmBooking.start_time).toLocaleDateString('en-GB')} | {new Date(deleteConfirmBooking.end_time).toLocaleDateString('en-GB')} 
+        </p>
+      </div>
+
+      <p className="text-[10px] font-bold text-brand-muted uppercase tracking-widest mb-6 leading-relaxed">
+        Are you sure? This action is permanent.
+      </p>
+      
+      <div className="flex flex-col gap-3">
+        <button 
+          onClick={() => handleDelete(deleteConfirmBooking.id)}
+          className="w-full bg-brand-danger text-white py-4 font-black text-xs uppercase tracking-[0.2em] hover:bg-red-700 transition-all shadow-lg active:scale-95"
+        >
+          Confirm Delete
+        </button>
+        <button 
+          onClick={() => setDeleteConfirmBooking(null)}
+          className="w-full bg-brand-surface text-brand-muted py-3 font-black text-xs uppercase tracking-widest hover:text-brand-secondary transition-all"
+        >
+          Go Back
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 }

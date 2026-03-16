@@ -354,7 +354,7 @@ const handleDragLeave = () => {
                   const finalStart = `${editForm.start_date} 08:30:00`;
                   const finalEnd = `${editForm.end_date} 17:30:00`;
                   await updateBooking(editingBooking.id, { title: editForm.title.toUpperCase(), start_time: finalStart, end_time: finalEnd } as any);
-                  setEditingBooking(null); fetchData(); setToast({ msg: "UPDATED ✓", type: 'success' });
+                  setEditingBooking(null); fetchData(); setToast({ msg: "UPDATED SUCCESSFULLY ✓", type: 'success' });
                 } catch (err: any) {
                   const errorMsg = err.response?.data?.message || err.response?.data?.error || "UPDATE FAILED";
                   setToast({ msg: `ERROR: ${errorMsg.toUpperCase()}`, type: 'error' });
