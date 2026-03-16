@@ -64,7 +64,7 @@ export function Calendar() {
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
   const isDraggingRef = useRef(false);
-
+  const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Bunu ekle
   const days = useMemo(() => getDaysForPeriod(startDate, viewWindow), [startDate, viewWindow]);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -140,7 +140,23 @@ export function Calendar() {
     e.preventDefault();
     setDragOverCell({ roomId, date });
   };
+const handleFloorDragOver = (e: React.DragEvent, floor: string) => {
+  e.preventDefault();
+  
+  // Eğer zaten açıksa veya zamanlayıcı çalışıyorsa dur
+  if (!collapsedFloors.includes(floor) || dragExpandTimerRef.current) return;
 
+  dragExpandTimerRef.current = setTimeout(() => {
+    setCollapsedFloors(prev => prev.filter(f => f !== floor));
+    dragExpandTimerRef.current = null;
+  }, 600); // 600ms üzerinde bekleyince açılır
+};
+const handleDragLeave = () => {
+  if (dragExpandTimerRef.current) {
+    clearTimeout(dragExpandTimerRef.current);
+    dragExpandTimerRef.current = null;
+  }
+};
   const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
     e.preventDefault();
     if (!draggedBooking) return;
@@ -259,7 +275,12 @@ export function Calendar() {
             <tbody>
               {dynamicFloors.map(floor => (
                 <Fragment key={floor}>
-                  <tr onClick={() => setCollapsedFloors(prev => prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor])} className="cursor-pointer bg-brand-secondary/90 text-white h-10 transition-all">
+                 <tr 
+  onClick={() => setCollapsedFloors(prev => prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor])}
+  onDragOver={(e) => handleFloorDragOver(e, floor)} // Eklendi
+  onDragLeave={handleDragLeave} // Eklendi
+  className="cursor-pointer bg-brand-secondary/90 text-white h-10 transition-all"
+>
                     <td className="sticky left-0 z-30 bg-brand-secondary px-4 text-center font-black uppercase text-[10px]">
                       {collapsedFloors.includes(floor) ? '▶' : '▼'} {floorConfigs[floor]?.label || floor}
                     </td>
