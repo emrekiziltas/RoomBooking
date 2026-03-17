@@ -3,7 +3,9 @@ import { getBookings, deleteBooking, updateBooking } from '../api/bookings';
 import { getRooms, getFloors } from '../api/rooms';
 import type { Booking, Room } from '../types/index';
 import { PageHeader } from '../components/PageHeader';
-import { NewBookingForm } from '../components/NewBookingForm'; // Yeni oluşturduğumuz component
+import { NewBookingForm } from '../components/NewBookingForm'; 
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
+import { EditBookingModal } from '../components/EditBookingModal';
 
 const SLOTS = {
   morning: { start: '08:30:00', end: '12:30:00', label: '08:30' },
@@ -116,25 +118,19 @@ const [deleteConfirmBooking, setDeleteConfirmBooking] = useState<Booking | null>
     return sortedGroups;
   }, [bookings, selectedRoomId]);
 
-  const handleUpdate = async () => {
-    if (!editingBooking) return;
-    const startTime = `${editForm.start_date} ${SLOTS[editForm.start_slot as keyof typeof SLOTS].start}`;
-    const endTime = `${editForm.end_date} ${SLOTS[editForm.end_slot as keyof typeof SLOTS].end}`;
-    try {
-      const res = await updateBooking(editingBooking.id, {
-        ...editForm,
-        room_id: Number(editForm.room_id) || editingBooking.room?.id || editingBooking.room_id,
-        title: editForm.title,
-        start_time: startTime,
-        end_time: endTime,
-      });
-      setBookings(bookings.map(b => b.id === editingBooking.id ? res.data : b));
-      setEditingBooking(null);
-      setToast({ msg: "UPDATE SUCCESSFUL ✓", type: 'success' });
-    } catch (err: any) {
-      setToast({ msg: err.response?.data?.message || "UPDATE FAILED", type: 'error' });
-    }
-  };
+// Eski handleUpdate'i bununla değiştir
+const handleUpdate = async (id: number, updatedData: any) => {
+  try {
+    // Artık editForm'dan değil, parametre olarak gelen updatedData'dan alıyoruz
+    const res = await updateBooking(id, updatedData);
+    
+    setBookings(bookings.map(b => b.id === id ? res.data : b));
+    setEditingBooking(null);
+    setToast({ msg: "UPDATE SUCCESSFUL ✓", type: 'success' });
+  } catch (err: any) {
+    setToast({ msg: err.response?.data?.message || "UPDATE FAILED", type: 'error' });
+  }
+};
 
 const handleDelete = async (id: number) => {
   try {
@@ -299,83 +295,22 @@ const handleDelete = async (id: number) => {
         )}
       </div>
 
-      {/* 5. UPDATE MODAL */}
-      {editingBooking && (
-        <div className="fixed inset-0 bg-brand-secondary/80 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="ini-card p-8 w-full max-w-xl animate-in zoom-in-95 duration-200">
-            <h2 className="text-xl font-black mb-6 text-brand-secondary uppercase italic border-b-2 border-brand-surface pb-2">Modify Schedule</h2>
-            <div className="space-y-4">
-              <div className="space-y-1">
-                  <span className="text-[8px] font-black text-brand-muted uppercase ml-2 tracking-widest">Description</span>
-                  <input type="text" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full bg-brand-surface rounded-ini px-4 py-2.5 font-black text-xs outline-none uppercase" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-brand-surface/50 p-4 rounded-ini space-y-2">
-                  <span className="text-[8px] font-black text-brand-primary block text-center uppercase tracking-[0.2em]">Arrival</span>
-                  <input type="date" value={editForm.start_date} onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })} className="w-full rounded-ini px-2 py-1.5 font-black text-[10px]" />
-                  <select value={editForm.start_slot} onChange={(e) => setEditForm({ ...editForm, start_slot: e.target.value })} className="w-full rounded-ini px-2 py-1.5 font-black text-[10px]">
-                    <option value="morning">08:30</option>
-                    <option value="afternoon">12:30</option>
-                  </select>
-                </div>
-                <div className="bg-brand-surface/50 p-4 rounded-ini space-y-2">
-                  <span className="text-[8px] font-black text-brand-danger block text-center uppercase tracking-[0.2em]">Departure</span>
-                  <input type="date" value={editForm.end_date} onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })} className="w-full rounded-ini px-2 py-1.5 font-black text-[10px]" />
-                  <select value={editForm.end_slot} onChange={(e) => setEditForm({ ...editForm, end_slot: e.target.value })} className="w-full rounded-ini px-2 py-1.5 font-black text-[10px]">
-                    <option value="morning">12:30</option>
-                    <option value="afternoon">17:30</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-8">
-              <button onClick={handleUpdate} className="flex-[2] bg-brand-secondary text-white py-3 rounded-ini font-black text-[11px] tracking-widest hover:bg-brand-primary shadow-md uppercase">Apply Updates</button>
-              <button onClick={() => setEditingBooking(null)} className="flex-1 bg-brand-surface text-brand-muted py-3 rounded-ini font-black text-[11px] tracking-widest uppercase">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-{/* CUSTOM DELETE CONFIRMATION MODAL WITH DETAILS */}
-{deleteConfirmBooking && (
-  <div className="fixed inset-0 bg-brand-secondary/90 backdrop-blur-md flex items-center justify-center z-[6000] p-6">
-    <div className="bg-white border-4 border-brand-danger p-8 w-full max-w-sm shadow-[0_0_50px_rgba(239,68,68,0.3)] animate-in zoom-in-95 duration-200 text-center">
-      <div className="w-16 h-16 bg-brand-danger/10 text-brand-danger rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
-        ⚠️
-      </div>
-      <h2 className="text-xl font-black text-brand-secondary uppercase italic mb-2">Confirm Deletion</h2>
-      
-      {/* DETAILS BOX */}
-      <div className="bg-brand-surface p-4 rounded-ini mb-6 border border-brand-danger/20">
-        <p className="text-[10px] font-black text-brand-danger uppercase tracking-widest mb-1">Target Entry:</p>
-        <p className="text-xl font-black text-brand-secondary uppercase italic mb-2>">{deleteConfirmBooking.title}</p>
-        <p className="text-sm font-black text-brand-secondary uppercase truncate">{deleteConfirmBooking.room?.name}</p>
-        <p className="text-[9px] font-bold text-brand-muted mt-1 uppercase">
-          {new Date(deleteConfirmBooking.start_time).toLocaleDateString('en-GB')} | {new Date(deleteConfirmBooking.end_time).toLocaleDateString('en-GB')} 
-        </p>
-      </div>
+<EditBookingModal 
+  isOpen={!!editingBooking}
+  booking={editingBooking}
+  rooms={rooms} 
+  onClose={() => setEditingBooking(null)}
+  onSave={handleUpdate}
+  showSlots={true} 
+/>
 
-      <p className="text-[10px] font-bold text-brand-muted uppercase tracking-widest mb-6 leading-relaxed">
-        Are you sure? This action is permanent.
-      </p>
-      
-      <div className="flex flex-col gap-3">
-        <button 
-          onClick={() => handleDelete(deleteConfirmBooking.id)}
-          className="w-full bg-brand-danger text-white py-4 font-black text-xs uppercase tracking-[0.2em] hover:bg-red-700 transition-all shadow-lg active:scale-95"
-        >
-          Confirm Delete
-        </button>
-        <button 
-          onClick={() => setDeleteConfirmBooking(null)}
-          className="w-full bg-brand-surface text-brand-muted py-3 font-black text-xs uppercase tracking-widest hover:text-brand-secondary transition-all"
-        >
-          Go Back
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+<ConfirmDeleteModal 
+  isOpen={!!deleteConfirmBooking}
+  data={deleteConfirmBooking}
+  onConfirm={handleDelete}
+  onCancel={() => setDeleteConfirmBooking(null)}
+/>
 
     </div>
   );
