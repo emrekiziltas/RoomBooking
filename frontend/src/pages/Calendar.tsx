@@ -6,16 +6,6 @@ import { EditBookingModal } from '../components/EditBookingModal';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Room, Booking } from '../types/index';
 
-// --- HELPERS ---
-function getDaysForPeriod(startDate: Date, daysCount: number) {
-  const days: any = [];
-  for (let i = 0; i < daysCount; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-  }
-  return days;
-}
-
 const cleanISO = (val: any) => {
   if (!val) return '—';
   return String(val).replace('T', ' ').split('.')[0];
@@ -50,8 +40,8 @@ export function Calendar() {
   // Drag & Drop
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
-  const isDraggingRef = useRef(false);
   const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const isDraggingRef = useRef(false);
 
   const days = useMemo(() => {
     const arr = [];
@@ -128,11 +118,11 @@ export function Calendar() {
     });
   };
 
-  const getShadowState = (room: Room, dateStr: string) => { // roomId yerine direkt room objesini alalım
+  const getShadowState = (room: Room, dateStr: string) => { 
     if (!draggedBooking || !dragOverCell) return { isShadow: false, isConflict: false };
     if (dragOverCell.roomId !== room.id) return { isShadow: false, isConflict: false };
 
-    // Sürüklenen kaydın kaç gün sürdüğünü hesapla
+
     const startTs = new Date(draggedBooking.start_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
     const endTs = new Date(draggedBooking.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
     const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24));
@@ -142,16 +132,14 @@ export function Calendar() {
     const dragEndDate = new Date(dragStartDate);
     dragEndDate.setDate(dragStartDate.getDate() + durationDays);
 
-    // Eğer bu hücre gölge alanındaysa
     const isShadow = currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
     let isConflict = false;
 
     if (isShadow) {
-      // Mevcut kayıtları bul (Sürüklediğimiz kaydın kendisini hariç tutarak)
+
       const existingBookings = getBookingsForRoomAndDay(room.id, currentCellDate)
         .filter(b => b.id !== draggedBooking.id);
 
-      // KAPASİTE KONTROLÜ: Mevcut kayıt sayısı + 1 (bizim sürüklediğimiz), kapasiteyi aşıyor mu?
       isConflict = (existingBookings.length + 1) > room.capacity;
     }
 
@@ -163,9 +151,11 @@ export function Calendar() {
     isDraggingRef.current = true;
     setDraggedBooking(booking);
     e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('opacity-50');
   };
 
-  const handleDragEnd = () => {
+const handleDragEnd = (e: React.DragEvent) => {
+    e.currentTarget.classList.remove('opacity-50');
     setDraggedBooking(null);
     setDragOverCell(null);
     setTimeout(() => { isDraggingRef.current = false; }, 100);
@@ -319,17 +309,21 @@ export function Calendar() {
                       {days.map(day => {
                         const dateStr = day.toISOString().split('T')[0];
                         const dayBookings = getBookingsForRoomAndDay(room.id, day);
-                        //const { isShadow, isConflict } = getShadowState(room.id, dateStr);
                         const { isShadow, isConflict } = getShadowState(room, dateStr);
                         return (
                           <td
-                            key={day.toISOString()}
-                            onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
-                            onDrop={(e) => handleDrop(e, room.id, dateStr)}
-                            className={`p-0.5 border-r border-brand-surface min-w-[40px] min-h-14 relative transition-all 
-                             ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
-                             /* GÖLGE (SHADOW) MANTIĞI */ ${isShadow ? isConflict? 'bg-red-600 ring-4 ring-red-800 ring-inset z-50 animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.5)]':'bg-brand-primary ring-4 ring-brand-primary/50 ring-inset z-40 scale-[0.98] shadow-lg': ''}}`}     >
-                            <div className="flex flex-col gap-0.5 relative z-10">
+  key={day.toISOString()}
+  onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
+  onDrop={(e) => handleDrop(e, room.id, dateStr)}
+  className={`p-0.5 border-r border-brand-surface min-w-[40px] min-h-14 relative transition-all 
+    ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
+    ${isShadow ? (isConflict 
+      ? 'bg-red-600 ring-4 ring-red-800 ring-inset z-50 animate-pulse' 
+      : 'bg-brand-primary ring-4 ring-brand-primary/50 ring-inset z-40 scale-[0.95]') 
+      : ''}`}
+>
+                          
+                          <div className="flex flex-col gap-0.5 relative z-10">
                               {dayBookings.map(b => (
                                 <div
                                   key={b.id}
@@ -337,21 +331,15 @@ export function Calendar() {
                                   onDragStart={(e) => handleDragStart(e, b)}
                                   onDragEnd={handleDragEnd}
                                   onClick={() => setEditingBooking(b)}
-                                  /* 1. Buradaki 'group/card' isimlendirmesi çok önemli. 
-                                     2. 'group' yerine 'group/card' kullanarak onu satırdaki diğer gruplardan izole ediyoruz.
-                                  */
                                   className="group/card relative px-1.5 py-1 bg-brand-secondary text-white rounded-sm text-[7px] font-black uppercase cursor-grab truncate shadow-sm transition-all hover:bg-brand-secondary/90 active:scale-95 mb-0.5 last:mb-0"
                                 >
                                   <span className="truncate block pr-2">{b.title}</span>
 
-                                  {/* Hızlı Silme Butonu */}
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setDeleteConfirmBooking(b);
                                     }}
-                                    /* 'group-hover/card:flex' diyerek sadece bu karta özel tetiklenmesini garanti ediyoruz.
-                                    */
                                     className="absolute top-0 right-0 bottom-0 w-4 bg-brand-danger hidden group-hover/card:flex items-center justify-center transition-opacity hover:bg-red-700"
                                   >
                                     <span className="text-[8px] font-bold">✕</span>
@@ -399,3 +387,4 @@ export function Calendar() {
     </div>
   );
 }
+export default Calendar;

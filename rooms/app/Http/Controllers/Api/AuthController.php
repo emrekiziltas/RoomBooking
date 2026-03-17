@@ -6,6 +6,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Google_Client;
 
 class AuthController extends Controller
 {
@@ -66,4 +69,42 @@ class AuthController extends Controller
             'message' => 'Çıkış yapıldı'
         ]);
     }
+
+public function googleLogin(Request $request)
+{
+    try {
+        $idToken = $request->credential;
+        $clientId = env('GOOGLE_CLIENT_ID');
+
+        $client = new Google_Client(['client_id' => $clientId]);
+               
+        $payload = $client->verifyIdToken($idToken);
+
+        if ($payload) {
+            $user = User::firstOrCreate(
+                ['email' => $payload['email']],
+                [
+                    'name' => $payload['name'],
+                    'password' => Hash::make(Str::random(16)),
+                    'role' => 'user',
+                ]
+            );
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'success' => true,
+                'token' => $token,
+                'user' => $user
+            ]);
+        }
+
+        return response()->json(['error' => 'Token doğrulanamadı.'], 401);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error_detail' => $e->getMessage(),
+        ], 401);
+    }
+}
 }

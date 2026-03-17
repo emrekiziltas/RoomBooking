@@ -264,3 +264,4 @@ export function AvailableRanges() {
     </div>
   );
 }
+export default AvailableRanges;

@@ -353,3 +353,4 @@ function DataColumn({ title, data, accentColor, isRoomOnly }: any) {
     </div>
   );
 }
+export default Reports

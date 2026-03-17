@@ -237,3 +237,4 @@ export function Available() {
     </div>
   );
 }
+export default Available;

@@ -315,3 +315,4 @@ const handleDelete = async (id: number) => {
     </div>
   );
 }
+export default Bookings;
