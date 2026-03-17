@@ -7,11 +7,10 @@ interface EditBookingModalProps {
   rooms?: Room[];
   onClose: () => void;
   onSave: (id: number, updatedData: any) => Promise<void>;
-  onDelete?: (id: number) => void;
   showSlots?: boolean;
 }
 
-export function EditBookingModal({ isOpen, booking, onClose, onSave, onDelete, showSlots = false }: EditBookingModalProps) {
+export function EditBookingModal({ isOpen, booking, onClose, onSave, showSlots = false }: EditBookingModalProps) {
   const [form, setForm] = useState({
     title: '',
     start_date: '',
@@ -71,7 +70,7 @@ export function EditBookingModal({ isOpen, booking, onClose, onSave, onDelete, s
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* START DATE (Her zaman görünür) */}
+            {/* START DATE */}
             <div className="bg-brand-surface p-5 space-y-3 border-l-4 border-brand-primary">
               <span className="text-[9px] font-black text-brand-primary block uppercase tracking-[0.2em]">Start Date</span>
               <input 
@@ -92,7 +91,7 @@ export function EditBookingModal({ isOpen, booking, onClose, onSave, onDelete, s
               )}
             </div>
 
-            {/* END DATE (Her zaman görünür) */}
+            {/* END DATE */}
             <div className="bg-brand-surface p-5 space-y-3 border-l-4 border-brand-danger">
               <span className="text-[9px] font-black text-brand-danger block uppercase tracking-[0.2em]">End Date</span>
               <input 
@@ -116,23 +115,14 @@ export function EditBookingModal({ isOpen, booking, onClose, onSave, onDelete, s
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap gap-3 mt-10">
+        <div className="flex gap-3 mt-10">
           <button 
             onClick={handleConfirm}
-            className="flex-[3] bg-brand-secondary text-white py-4 font-black text-xs tracking-[0.2em] hover:bg-brand-primary transition-all uppercase shadow-lg active:scale-95"
+            className="flex-[2] bg-brand-secondary text-white py-4 font-black text-xs tracking-[0.2em] hover:bg-brand-primary transition-all uppercase shadow-lg active:scale-95"
           >
             Save Changes
           </button>
           
-          {onDelete && (
-            <button 
-              onClick={() => onDelete(booking.id)}
-              className="flex-1 bg-brand-danger/10 text-brand-danger border-2 border-brand-danger py-4 font-black text-xs tracking-widest hover:bg-brand-danger hover:text-white transition-all uppercase"
-            >
-              Delete
-            </button>
-          )}
-
           <button 
             onClick={onClose} 
             className="flex-1 bg-brand-surface text-brand-muted py-4 font-black text-xs tracking-widest hover:text-brand-secondary transition-all uppercase"
