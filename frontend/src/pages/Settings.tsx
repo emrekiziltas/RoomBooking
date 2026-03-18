@@ -171,10 +171,52 @@ export function Settings() {
 
         {/* Kat ayarlarıysa renk seçiciyi göster */}
         {isFloorGroup && (
-          <td className="py-5 text-center">
-            {/* Renk seçici butonu buraya gelecek */}
-          </td>
-        )}
+  <td className="py-5 text-center relative overflow-visible">
+    <div className="flex flex-col items-center justify-center">
+      {/* Mevcut Renk Önizleme Butonu */}
+      <button
+        onClick={() => setActivePicker(activePicker === item.id ? null : item.id)}
+        className={`w-8 h-8 rounded-full border-4 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.1)] transition-transform hover:scale-110 ${currentColor}`}
+      />
+      
+      {/* Renk Seçme Paneli (Picker Pop-up) */}
+      {activePicker === item.id && (
+        <>
+          {/* Overlay: Dışarı tıklayınca kapansın */}
+          <div className="fixed inset-0 z-10" onClick={() => setActivePicker(null)} />
+          
+          <div className="absolute top-full mt-2 right-0 z-20 bg-white p-3 border-4 border-brand-secondary shadow-[8px_8px_0px_#000] w-64 animate-in zoom-in-95 duration-200">
+            <div className="grid grid-cols-5 gap-1 max-h-60 overflow-y-auto custom-scrollbar p-1">
+              {COLOR_GROUPS.map(color => (
+                <div key={color} className="flex flex-col gap-1">
+                  {TONES.map(tone => {
+                    const classBtn = `bg-${color}-${tone}`;
+                    return (
+                      <button
+                        key={`${color}-${tone}`}
+                        title={classBtn}
+                        onClick={() => {
+                          setTempColors(prev => ({ ...prev, [item.id]: classBtn }));
+                          setActivePicker(null);
+                        }}
+                        className={`w-full aspect-square rounded-sm border border-black/5 hover:border-black/40 hover:scale-110 transition-all ${classBtn} ${tempColors[item.id] === classBtn ? 'ring-2 ring-brand-primary ring-offset-1' : ''}`}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 pt-2 border-t border-brand-surface flex justify-between items-center">
+               <span className="text-[8px] font-black uppercase text-brand-muted">Select Tone</span>
+               <button onClick={() => setActivePicker(null)} className="text-[8px] font-black uppercase text-brand-primary">Close</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  </td>
+)}
+      
 
         <td className="py-5 text-right pr-4">
           <button

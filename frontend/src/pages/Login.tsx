@@ -25,7 +25,7 @@ export function Login() {
       const res = await login(email, password);
       // res.data kullanıcı objesini, res.token ise string token'ı temsil eder
       setAuth(res.data, res.token);
-      navigate('/');
+      navigate('/calendar');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Giriş başarısız!');
     } finally {
@@ -49,7 +49,7 @@ export function Login() {
         
         // Navigate ile yönlendirmek yeterli olmalı çünkü setAuth state'i güncelledi.
         // Eğer Navbar hala gelmezse window.location.href = '/' kullanabilirsin.
-        navigate('/'); 
+        navigate('/calendar'); 
       }
     } catch (error: any) {
       console.error("Google Giriş Hatası:", error.response?.data || error.message);

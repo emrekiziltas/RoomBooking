@@ -6,17 +6,20 @@ use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\LookupController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\BookingLogController;
+use App\Http\Controllers\Api\AssignController;
 
 
 // --- 🔓 Herkese Açık ---
 Route::post('auth/register', [AuthController::class, 'register']);
 Route::post('auth/login', [AuthController::class, 'login']);
 Route::post('/auth/google', [AuthController::class, 'googleLogin']);
-
+ //    Route::get('assigns', [AssignController::class, 'index']);
+     
 // --- 🔒 Giriş Yapmış Kullanıcılar ---
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('auth/logout', [AuthController::class, 'logout']);
+
 
     // --- 🌍 Genel Bilgiler ---
     Route::get('floors', [LookupController::class, 'getFloors']);
@@ -43,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Settings Yönetimi
         Route::get('settings', [LookupController::class, 'index']);
+       Route::get('assigns', [AssignController::class, 'index']);
         Route::put('settings/{id}', [LookupController::class, 'update']);
 
         // ODA GÜNCELLEME (İşte eksik olan ve 405 veren rota burasıydı)

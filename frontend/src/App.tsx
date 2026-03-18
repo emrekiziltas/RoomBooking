@@ -15,6 +15,7 @@ import AvailableRanges from './pages/AvailableRanges';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import { Navbar } from './components/UI/Navbar'; // Süslü parantez ekledik çünkü 'named export'
+import Assigns  from './pages/Assigns'; 
 
 const queryClient = new QueryClient();
 
@@ -44,27 +45,21 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Korumalı Rotalar */}
+
+             {/* Korumalı Rotalar */}
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/rooms" element={<PrivateRoute><Rooms /></PrivateRoute>} />
           <Route path="/bookings" element={<PrivateRoute><Bookings /></PrivateRoute>} />
           <Route path="/calendar" element={<PrivateRoute><Calendar /></PrivateRoute>} />
           <Route path="/available" element={<PrivateRoute><Available /></PrivateRoute>} />
           <Route path="/available-ranges" element={<PrivateRoute><AvailableRanges /></PrivateRoute>} />
-          <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
+          
+         {/* <Route path="/assigns" element={<PrivateRoute><Assigns /></PrivateRoute>} />*/}
 
           {/* Admin Rotası */}
-          <Route 
-            path="/settings" 
-            element={
-              <PrivateRoute>
-                <AdminRoute>
-                  <Settings />
-                </AdminRoute>
-              </PrivateRoute>
-            } 
-          />
-
+          <Route  path="/rooms" element={<PrivateRoute><AdminRoute><Rooms /></AdminRoute></PrivateRoute>}/>
+          <Route  path="/reports" element={<PrivateRoute><AdminRoute><Reports /></AdminRoute></PrivateRoute>}/>
+          <Route  path="/settings" element={<PrivateRoute><AdminRoute><Settings /></AdminRoute></PrivateRoute>}/>
+          <Route  path="/assigns" element={<PrivateRoute><AdminRoute><Assigns /></AdminRoute></PrivateRoute>}/>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
