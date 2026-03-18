@@ -320,7 +320,7 @@ export default function AssignPage() {
     }
   };
 
-  // Auto-select: liste yüklenince ilk kartı seç, liste boşalınca sağı temizle
+  // Auto-select: liste yüklenince ilk kartı seç, liste boşalınca sağı temizle ee
   useEffect(() => {
     if (unassignedList.length === 0) {
       setSelectedBooking(null);
