@@ -343,7 +343,7 @@ export default function AssignPage() {
         <div className="flex h-[calc(100vh-64px)] mt-16 bg-brand-surface text-brand-secondary font-brand overflow-hidden">
 
           {/* SOL: BEKLEYEN LİSTESİ */}
-          <div ref={leftPanelRef} className="w-1/4 border-r-4 border-brand-secondary bg-white flex flex-col p-4 relative" style={{ zIndex: 20 }}>
+          <div ref={leftPanelRef} className="w-64 border-r-4  border-brand-secondary bg-white flex flex-col p-4 relative" style={{ zIndex: 20 }}>
             <div className="flex justify-between items-center border-b-4 border-brand-primary pb-2 mb-6 flex-shrink-0">
               <h2 className="font-black uppercase italic tracking-tighter text-xl">Pending</h2>
               <span className="bg-brand-secondary text-white text-[10px] px-2 py-0.5 font-bold tabular-nums">
@@ -376,7 +376,7 @@ export default function AssignPage() {
           {/* SAĞ: ODA ANALİZİ */}
           <div className="flex-1 p-8 overflow-y-auto bg-[#F8FAFC] custom-scrollbar" style={{ zIndex: 10 }}>
             {selectedBooking ? (
-              <div className="max-w-6xl mx-auto">
+              <div className="max-w-8xl mx-auto">
                 <div className="mb-12 border-l-[12px] border-brand-primary pl-8">
                   <h2 className="text-6xl font-black uppercase italic leading-none mb-3 tracking-tighter text-brand-secondary">
                     {selectedBooking.title}
@@ -418,7 +418,7 @@ export default function AssignPage() {
                           isOpen={!!expandedFloors[prefix]}
                           onToggle={() => setExpandedFloors(p => ({ ...p, [prefix]: !p[prefix] }))}
                         >
-                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             {floorRooms.map((room: any, index: number) => (
                               <div key={room.id} ref={index === 0 ? roomCardRef : undefined}>
                                 <DroppableRoom
