@@ -6,26 +6,39 @@ import { EditBookingModal } from '../components/EditBookingModal';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Room, Booking } from '../types/index';
 
+const normalizeDate = (dateInput: any): number => {
+  if (!dateInput) return 0;
+  let d: Date;
+  if (dateInput instanceof Date) {
+    d = dateInput;
+  } else {
+    const cleaned = String(dateInput).replace(' ', 'T').replace(/\.\d+/, '');
+    d = new Date(cleaned);
+  }
+  if (isNaN(d.getTime())) return 0;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+};
+
 const cleanISO = (val: any) => {
   if (!val) return '—';
   return String(val).replace('T', ' ').split('.')[0];
 };
 
 function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boolean): string {
-  if (bookedCount >= capacity) return 'bg-brand-primary text-white border-brand-primary shadow-lg ring-1 ring-brand-primary/20';
+  if (bookedCount >= capacity) return 'bg-brand-primary text-white border-brand-primary shadow-inner';
   if (bookedCount > 0) return 'bg-brand-primary/10 text-brand-primary border-brand-primary/20 font-bold';
   if (isWeekend) return 'bg-brand-surface/50 border-brand-surface text-brand-muted';
-  return 'bg-white border-brand-surface text-slate-200';
+  return 'bg-white border-brand-surface text-slate-100';
 }
 
 export function Calendar() {
-  // --- STATE ---
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [meta, setMeta] = useState<{ guest_roles: any[] }>({ guest_roles: [] });
   const [loading, setLoading] = useState(true);
   const [viewWindow, setViewWindow] = useState<7 | 15>(15);
   const [floorConfigs, setFloorConfigs] = useState<Record<string, any>>({});
-  const [collapsedFloors, setCollapsedFloors] = useState<string[]>(['M', 'S']);
+  const [collapsedFloors, setCollapsedFloors] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -37,36 +50,50 @@ export function Calendar() {
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [deleteConfirmBooking, setDeleteConfirmBooking] = useState<Booking | null>(null);
 
-  // Drag & Drop
   const [draggedBooking, setDraggedBooking] = useState<Booking | null>(null);
   const [dragOverCell, setDragOverCell] = useState<{ roomId: number, date: string } | null>(null);
-  const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-const isDraggingRef = useRef(false);
+  const isDraggingRef = useRef(false);
+
+  // Viewwindow'a göre kolon genişliği
+  const colWidth = viewWindow === 7 ? 'min-w-[90px]' : 'min-w-[60px]';
+  const bookingTextSize = viewWindow === 7 ? 'text-[9px] p-2' : 'text-[7px] p-1';
+
+  const moveNext = () => setStartDate(prev => {
+    const d = new Date(prev);
+    d.setDate(d.getDate() + viewWindow);
+    return d;
+  });
+
+  const movePrev = () => setStartDate(prev => {
+    const d = new Date(prev);
+    d.setDate(d.getDate() - viewWindow);
+    return d;
+  });
 
   const days = useMemo(() => {
-    const arr = [];
-    for (let i = 0; i < viewWindow; i++) {
+    return Array.from({ length: viewWindow }, (_, i) => {
       const d = new Date(startDate);
       d.setDate(d.getDate() + i);
-      arr.push(d);
-    }
-    return arr;
+      return d;
+    });
   }, [startDate, viewWindow]);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayTs = useMemo(() => {
+    const t = new Date();
+    return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  }, []);
 
-  // --- API ACTIONS ---
   const fetchData = async () => {
     try {
       const [r, b, f] = await Promise.all([getRooms(), getBookings(), getFloors()]);
-      setRooms(r.data);
-      setBookings(b.data);
       const configs: Record<string, any> = {};
       (f.data ?? []).forEach((floor: any) => {
         configs[floor.key.toUpperCase()] = { label: floor.label.toUpperCase() };
       });
+      setRooms(r.data);
+      setBookings(b.data);
       setFloorConfigs(configs);
+      if (b.meta?.guest_roles) setMeta({ guest_roles: b.meta.guest_roles });
     } catch (err) {
       console.error("Fetch error:", err);
     } finally {
@@ -78,20 +105,54 @@ const isDraggingRef = useRef(false);
 
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => setToast(null), 5000);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(t);
     }
   }, [toast]);
 
-  const handleUpdate = async (id: number, updatedData: any) => {
+  const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
+    const calendarDayTs = normalizeDate(day);
+    return bookings.filter(b => {
+      const bRoomId = (b as any).room_id || b.room?.id;
+      const startTs = normalizeDate((b as any).check_in);
+      const endTs = normalizeDate((b as any).check_out);
+      return Number(bRoomId) === Number(roomId) && calendarDayTs >= startTs && calendarDayTs <= endTs;
+    });
+  };
+
+  const getShadowState = (room: Room, dateStr: string) => {
+    if (!draggedBooking || !dragOverCell || dragOverCell.roomId !== room.id)
+      return { isShadow: false, isConflict: false };
+
+    const startTs = normalizeDate((draggedBooking as any).check_in);
+    const endTs = normalizeDate((draggedBooking as any).check_out);
+    const durationMs = endTs - startTs;
+
+    const currentCellTs = normalizeDate(dateStr);
+    const dragStartTs = normalizeDate(dragOverCell.date);
+    const dragEndTs = dragStartTs + durationMs;
+
+    const isShadow = currentCellTs >= dragStartTs && currentCellTs <= dragEndTs;
+    let isConflict = false;
+
+    if (isShadow) {
+      const otherBookings = getBookingsForRoomAndDay(room.id, new Date(dateStr))
+        .filter(b => b.id !== draggedBooking.id);
+      isConflict = (otherBookings.length + 1) > room.capacity;
+    }
+
+    return { isShadow, isConflict };
+  };
+
+  const handleUpdate = async (id: number, data: any) => {
     try {
-      await updateBooking(id, updatedData);
-      setEditingBooking(null);
-      await fetchData();
-      setToast({ msg: "UPDATED SUCCESSFULLY ✓", type: 'success' });
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.message || "UPDATE FAILED";
-      setToast({ msg: `ERROR: ${errorMsg.toUpperCase()}`, type: 'error' });
+      const response = await updateBooking(id, data);
+      if ((response as any).success) {
+        setBookings(prev => prev.map(b => b.id === id ? (response as any).data : b));
+        setEditingBooking(null);
+      }
+    } catch (err) {
+      console.error("DB Update fail", err);
     }
   };
 
@@ -101,113 +162,46 @@ const isDraggingRef = useRef(false);
       setDeleteConfirmBooking(null);
       setEditingBooking(null);
       await fetchData();
-      setToast({ msg: "REMOVED FROM LOGS ✓", type: 'success' });
+      setToast({ msg: "REMOVED ✓", type: 'success' });
     } catch (err) {
       setToast({ msg: "DELETE FAILED", type: 'error' });
     }
   };
 
-  // --- RENDER LOGIC ---
-  const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
-    const ts = new Date(day).setHours(0, 0, 0, 0);
-    return bookings.filter(b => {
-      const bRoomId = b.room?.id || (b as any).room_id;
-      const start = new Date(b.start_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
-      const end = new Date(b.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
-      return Number(bRoomId) === Number(roomId) && ts >= start && ts <= end;
-    });
-  };
-
-  const getShadowState = (room: Room, dateStr: string) => { 
-    if (!draggedBooking || !dragOverCell) return { isShadow: false, isConflict: false };
-    if (dragOverCell.roomId !== room.id) return { isShadow: false, isConflict: false };
-
-
-    const startTs = new Date(draggedBooking.start_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
-    const endTs = new Date(draggedBooking.end_time.replace(' ', 'T')).setHours(0, 0, 0, 0);
-    const durationDays = Math.round((endTs - startTs) / (1000 * 60 * 60 * 24));
-
-    const currentCellDate = new Date(dateStr);
-    const dragStartDate = new Date(dragOverCell.date);
-    const dragEndDate = new Date(dragStartDate);
-    dragEndDate.setDate(dragStartDate.getDate() + durationDays);
-
-    const isShadow = currentCellDate >= dragStartDate && currentCellDate <= dragEndDate;
-    let isConflict = false;
-
-    if (isShadow) {
-
-      const existingBookings = getBookingsForRoomAndDay(room.id, currentCellDate)
-        .filter(b => b.id !== draggedBooking.id);
-
-      isConflict = (existingBookings.length + 1) > room.capacity;
-    }
-
-    return { isShadow, isConflict };
-  };
-
-  // --- DND HANDLERS ---
   const handleDragStart = (e: React.DragEvent, booking: Booking) => {
     isDraggingRef.current = true;
     setDraggedBooking(booking);
     e.dataTransfer.effectAllowed = 'move';
-    e.currentTarget.classList.add('opacity-50');
   };
 
-const handleDragEnd = (e: React.DragEvent) => {
-    e.currentTarget.classList.remove('opacity-50');
+  const handleDragEnd = () => {
     setDraggedBooking(null);
     setDragOverCell(null);
-    setTimeout(() => { isDraggingRef.current = false; }, 100);
-  };
-
-  const handleDragOver = (e: React.DragEvent, roomId: number, date: string) => {
-    e.preventDefault();
-    setDragOverCell({ roomId, date });
-  };
-
-  const handleFloorDragOver = (e: React.DragEvent, floor: string) => {
-    e.preventDefault();
-    if (!collapsedFloors.includes(floor) || dragExpandTimerRef.current) return;
-    dragExpandTimerRef.current = setTimeout(() => {
-      setCollapsedFloors(prev => prev.filter(f => f !== floor));
-      dragExpandTimerRef.current = null;
-    }, 600);
-  };
-
-  const handleDragLeave = () => {
-    if (dragExpandTimerRef.current) {
-      clearTimeout(dragExpandTimerRef.current);
-      dragExpandTimerRef.current = null;
-    }
+    isDraggingRef.current = false;
   };
 
   const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
     e.preventDefault();
     if (!draggedBooking) return;
 
-    const oldStart = new Date(draggedBooking.start_time.replace(' ', 'T')).getTime();
-    const oldEnd = new Date(draggedBooking.end_time.replace(' ', 'T')).getTime();
+    const oldStart = normalizeDate((draggedBooking as any).check_in);
+    const oldEnd = normalizeDate((draggedBooking as any).check_out);
     const durationMs = oldEnd - oldStart;
 
-    const newStartObj = new Date(targetDate + "T08:30:00");
-    const newEndObj = new Date(newStartObj.getTime() + durationMs);
+    const newCheckIn = new Date(targetDate + "T14:00:00");
+    const newCheckOut = new Date(newCheckIn.getTime() + durationMs);
 
     try {
       await updateBooking(draggedBooking.id, {
         room_id: targetRoomId,
-        title: draggedBooking.title,
-        start_time: cleanISO(newStartObj.toISOString()),
-        end_time: cleanISO(newEndObj.toISOString()),
+        check_in: cleanISO(newCheckIn.toISOString()),
+        check_out: cleanISO(newCheckOut.toISOString()),
       } as any);
-      setToast({ msg: "UPDATED SUCCESSFULLY ✓", type: 'success' });
       await fetchData();
-    } catch (err: any) {
-      const msg = err.response?.data?.message || "SERVER REJECTED ACTION";
-      setToast({ msg: `FAILED: ${msg.toUpperCase()}`, type: 'error' });
+    } catch (err) {
+      setToast({ msg: "MOVE FAILED", type: 'error' });
     } finally {
-      setDraggedBooking(null);
-      setDragOverCell(null);
+      handleDragEnd();
     }
   };
 
@@ -216,167 +210,177 @@ const handleDragEnd = (e: React.DragEvent) => {
     return Array.from(floorSet).sort();
   }, [rooms]);
 
-  const moveNext = () => setStartDate(d => { const n = new Date(d); n.setDate(n.getDate() + viewWindow); return n; });
-  const movePrev = () => setStartDate(d => { const n = new Date(d); n.setDate(n.getDate() - viewWindow); return n; });
-
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-brand-secondary animate-pulse text-2xl tracking-widest italic uppercase">Syncing...</div>;
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center font-black animate-pulse uppercase text-2xl tracking-widest">
+      Syncing...
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-brand-surface font-brand">
-      <div className="max-w-[100vw] mx-auto px-4 pt-4">
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4 mb-4">
-          <div className="flex-1 w-full text-left">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-black text-brand-secondary uppercase tracking-tighter italic">DAILY OPS</h1>
-              <div className="h-6 w-[2px] bg-brand-primary/20 rotate-[20deg]" />
-              <p className="text-brand-muted text-[10px] font-black uppercase tracking-[0.2em]">
+    <div className="min-h-screen bg-brand-surface p-4 font-brand">
+
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-end border-b-4 border-slate-800 pb-6 mb-8 gap-4">
+        <div className="flex-1 w-full text-left">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-black text-slate-800 uppercase tracking-tighter italic leading-none">
+              Daily <span className="text-brand-primary">Ops</span>
+            </h1>
+            <div className="h-8 w-[3px] bg-slate-800 rotate-[20deg]" />
+            <div>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Current View</p>
+              <p className="text-slate-800 text-sm font-black uppercase bg-yellow-300 px-2 py-0.5 shadow-[2px_2px_0px_#000]">
                 {days[0].toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} — {days[days.length - 1].toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
               </p>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 mt-4 md:mt-0">
-            <div className="flex bg-white p-1 rounded-ini border border-brand-surface shadow-sm">
-              {[7, 15].map((v) => (
-                <button key={v} onClick={() => setViewWindow(v as any)} className={`px-3 py-1 rounded-ini text-[9px] font-black ${viewWindow === v ? 'bg-brand-secondary text-white' : 'text-brand-muted'}`}>{v} DAYS</button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1 bg-white p-1 rounded-ini border border-brand-surface shadow-sm">
-              <button onClick={movePrev} className="w-8 h-8 font-bold text-xs">←</button>
-              <button onClick={() => setStartDate(new Date(new Date().setHours(0, 0, 0, 0)))} className="px-4 h-8 text-[9px] font-black uppercase">Today</button>
-              <button onClick={moveNext} className="w-8 h-8 font-bold text-xs">→</button>
-            </div>
-            <button onClick={() => setIsFormOpen(!isFormOpen)} className={`px-6 py-3 font-black uppercase text-[10px] rounded-ini transition-all shadow-md ${isFormOpen ? 'bg-brand-primary text-white' : 'bg-brand-secondary text-white'}`}>
-              {isFormOpen ? '✕ CLOSE' : '+ NEW ENTRY'}
-            </button>
-          </div>
         </div>
 
-        {isFormOpen && (
-          <div className="mb-6 relative z-50 animate-in slide-in-from-top duration-300">
-            <div className="bg-white rounded-ini shadow-2xl border border-brand-surface p-6">
-              <NewBookingForm
-                rooms={rooms}
-                onSuccess={async () => {
-                  setIsFormOpen(false);
-                  await fetchData();
-                  setToast({ msg: "RESERVATION CREATED ✓", type: 'success' });
-                }}
-                onCancel={() => setIsFormOpen(false)}
-                showToast={(msg, type) => setToast({ msg, type: type as 'error' | 'success' })}
-              />
-            </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex bg-slate-200 p-1 border-2 border-slate-800 shadow-[4px_4px_0px_#000]">
+            {[7, 15].map((v) => (
+              <button
+                key={v}
+                onClick={() => setViewWindow(v as any)}
+                className={`px-4 py-1.5 text-[10px] font-black transition-all ${viewWindow === v ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-300'}`}
+              >
+                {v} DAYS
+              </button>
+            ))}
           </div>
-        )}
+
+          <div className="flex items-center border-2 border-slate-800 shadow-[4px_4px_0px_#000] bg-white">
+            <button onClick={movePrev} className="w-10 h-10 font-black text-lg border-r-2 border-slate-800 hover:bg-slate-100 transition-colors">‹</button>
+            <button onClick={() => setStartDate(new Date(new Date().setHours(0, 0, 0, 0)))} className="px-6 h-10 text-[10px] font-black uppercase hover:bg-slate-100 tracking-widest">Today</button>
+            <button onClick={moveNext} className="w-10 h-10 font-black text-lg border-l-2 border-slate-800 hover:bg-slate-100 transition-colors">›</button>
+          </div>
+
+          <button
+            onClick={() => setIsFormOpen(!isFormOpen)}
+            className={`h-10 px-6 font-black uppercase text-[10px] border-2 border-slate-800 shadow-[4px_4px_0px_#000] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${isFormOpen ? 'bg-red-500 text-white' : 'bg-brand-primary text-white'}`}
+          >
+            {isFormOpen ? '✕ Close' : '+ New Entry'}
+          </button>
+        </div>
       </div>
 
+  {isFormOpen && (
+  <div className="mb-6">
+    <NewBookingForm
+      rooms={rooms}
+      // ARTIK ROLLERİ BURADAN GÖNDERİYORUZ:
+      guestRoles={meta.guest_roles || []} 
+      onSuccess={() => { setIsFormOpen(false); fetchData(); }}
+      onCancel={() => setIsFormOpen(false)}
+      showToast={(msg, type) => setToast({ msg, type: type as any })}
+    />
+  </div>
+)}
+
       {/* TABLE */}
-      <div className="px-4">
-        <div className="overflow-x-auto no-scrollbar border border-brand-surface rounded-ini shadow-sm bg-white">
-          <table className="w-full border-collapse table-fixed">
-            <thead>
-              <tr className="bg-brand-surface/30">
-                <th className="sticky left-0 z-40 bg-brand-surface p-4 border-r border-brand-primary/10 text-center font-black uppercase text-[10px] w-[120px]">Resources</th>
-                {days.map(day => (
-                  <th key={day.toISOString()} className={`p-2 border-r border-brand-surface min-w-[90px] text-center ${day.getTime() === today.getTime() ? 'bg-brand-primary text-white shadow-lg' : ''}`}>
-                    <div className="text-[9px] font-black uppercase opacity-60">{day.toLocaleDateString('en-GB', { weekday: 'short' })}</div>
-                    <div className="text-lg font-black">{day.getDate()}</div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {dynamicFloors.map(floor => (
-                <Fragment key={floor}>
-                  <tr
-                    onClick={() => setCollapsedFloors(prev => prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor])}
-                    onDragOver={(e) => handleFloorDragOver(e, floor)}
-                    onDragLeave={handleDragLeave}
-                    className="cursor-pointer bg-brand-secondary/90 text-white h-10 transition-all hover:bg-brand-secondary"
-                  >
-                    <td className="sticky left-0 z-30 bg-brand-secondary px-4 text-center font-black uppercase text-[10px]">
-                      {collapsedFloors.includes(floor) ? '▶' : '▼'} {floorConfigs[floor]?.label || floor}
-                    </td>
-                    <td colSpan={days.length} className="text-center italic text-[8px] opacity-30 uppercase font-black tracking-widest">Section Active</td>
-                  </tr>
-                  {!collapsedFloors.includes(floor) && rooms.filter(r => r.name?.[0].toUpperCase() === floor).map(room => (
-                    <tr key={room.id} className="border-b border-brand-surface group">
-                      <td className="sticky left-0 z-30 bg-white p-4 border-r border-brand-primary/5 text-center shadow-sm">
-                        <div className="font-black text-brand-secondary text-sm uppercase">{room.name}</div>
-                        <div className="text-[7px] font-black text-brand-primary mt-1 uppercase bg-brand-primary/10 rounded-full px-2 py-0.5 inline-block">Cap: {room.capacity}</div>
+      <div className="overflow-x-auto bg-white border-2 border-slate-800 no-scrollbar">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-slate-100 border-b-2 border-slate-800">
+              <th className="sticky left-0 z-40 bg-slate-200 p-4 border-r-2 border-slate-800 w-[120px] text-[10px] font-black uppercase">
+                Resources
+              </th>
+              {days.map(day => (
+                <th
+                  key={day.toISOString()}
+                  className={`${colWidth} p-2 border-r border-slate-200 text-center ${normalizeDate(day) === todayTs ? 'bg-brand-primary/10' : ''}`}
+                >
+                  <div className="text-[9px] font-black opacity-40 uppercase">
+                    {day.toLocaleDateString('en-GB', { weekday: 'short' })}
+                  </div>
+                  <div className={`font-black ${viewWindow === 15 ? 'text-base' : 'text-xl'}`}>
+                    {day.getDate()}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {dynamicFloors.map(floor => (
+              <Fragment key={floor}>
+                <tr
+                  className="bg-slate-800 text-white h-10 cursor-pointer hover:bg-slate-700 transition-colors"
+                  onClick={() => setCollapsedFloors(prev =>
+                    prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor]
+                  )}
+                >
+                  <td className="sticky left-0 z-30 bg-slate-800 px-4 font-black italic text-[11px] uppercase tracking-widest">
+                    {collapsedFloors.includes(floor) ? '▷' : '▽'} {floorConfigs[floor]?.label || floor}
+                  </td>
+                  <td colSpan={days.length} />
+                </tr>
+
+                {!collapsedFloors.includes(floor) && rooms
+                  .filter(r => r.name?.toUpperCase().startsWith(floor))
+                  .map(room => (
+                    <tr key={room.id} className="border-b border-slate-100 group">
+                      <td className="sticky left-0 z-20 bg-white p-3 border-r-2 border-slate-800 font-black italic uppercase text-slate-800 text-sm">
+                        {room.name}
                       </td>
                       {days.map(day => {
                         const dateStr = day.toISOString().split('T')[0];
                         const dayBookings = getBookingsForRoomAndDay(room.id, day);
                         const { isShadow, isConflict } = getShadowState(room, dateStr);
+                        const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+
                         return (
                           <td
-  key={day.toISOString()}
-  onDragOver={(e) => handleDragOver(e, room.id, dateStr)}
-  onDrop={(e) => handleDrop(e, room.id, dateStr)}
-  className={`p-0.5 border-r border-brand-surface min-w-[40px] min-h-14 relative transition-all 
-    ${getOccupancyColor(dayBookings.length, room.capacity, day.getDay() === 0 || day.getDay() === 6)}
-    ${isShadow ? (isConflict 
-      ? 'bg-red-600 ring-4 ring-red-800 ring-inset z-50 animate-pulse' 
-      : 'bg-brand-primary ring-4 ring-brand-primary/50 ring-inset z-40 scale-[0.95]') 
-      : ''}`}
->
-                          
-                          <div className="flex flex-col gap-0.5 relative z-10">
-                              {dayBookings.map(b => (
-                                <div
-                                  key={b.id}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(e, b)}
-                                  onDragEnd={handleDragEnd}
-                                  onClick={() => setEditingBooking(b)}
-                                  className="group/card relative px-1.5 py-1 bg-brand-secondary text-white rounded-sm text-[7px] font-black uppercase cursor-grab truncate shadow-sm transition-all hover:bg-brand-secondary/90 active:scale-95 mb-0.5 last:mb-0"
-                                >
-                                  <span className="truncate block pr-2">{b.title}</span>
-
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDeleteConfirmBooking(b);
-                                    }}
-                                    className="absolute top-0 right-0 bottom-0 w-4 bg-brand-danger hidden group-hover/card:flex items-center justify-center transition-opacity hover:bg-red-700"
-                                  >
-                                    <span className="text-[8px] font-bold">✕</span>
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
+                            key={day.toISOString()}
+                            onDragEnter={() => draggedBooking && setDragOverCell({ roomId: room.id, date: dateStr })}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => handleDrop(e, room.id, dateStr)}
+                            className={`p-0.5 border-r border-slate-100 relative transition-all duration-75
+                              ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}
+                              ${isShadow ? (isConflict
+                                ? '!bg-red-600 ring-4 ring-red-800 z-50'
+                                : '!bg-purple-600 ring-4 ring-purple-400 z-50')
+                                : ''}`}
+                          >
+                            {!isShadow && dayBookings.map(b => (
+                              <div
+                                key={b.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, b)}
+                                onDragEnd={handleDragEnd}
+                                onClick={() => setEditingBooking(b)}
+                                className={`bg-brand-secondary text-white mb-0.5 rounded-sm cursor-grab font-black shadow-md uppercase tracking-tighter truncate ${bookingTextSize}`}
+                              >
+                                {(b as any).snapshot_guest_name || (b as any).guest?.full_name || "GUEST"}
+                              </div>
+                            ))}
                           </td>
                         );
                       })}
                     </tr>
                   ))}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* --- MODALS --- */}
       <EditBookingModal
         isOpen={!!editingBooking}
         booking={editingBooking}
         onClose={() => setEditingBooking(null)}
         onSave={handleUpdate}
-        onDelete={() => setDeleteConfirmBooking(editingBooking)} // Bu satır bizim yeni onay modalını tetikler
-        showSlots={false}
+        onDelete={() => setDeleteConfirmBooking(editingBooking)}
+        guestRoles={meta?.guest_roles || []}
       />
 
       <ConfirmDeleteModal
         isOpen={!!deleteConfirmBooking}
         data={deleteConfirmBooking}
-        onConfirm={handleDelete} // Asıl silme işlemini yapan fonksiyon
+        onConfirm={handleDelete}
         onCancel={() => setDeleteConfirmBooking(null)}
       />
 
-      {/* --- TOAST --- */}
+      {/* TOAST */}
       {toast && (
         <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in slide-in-from-top-10">
           <div className={`px-8 py-4 rounded-full shadow-2xl border-4 bg-white ${toast.type === 'error' ? 'border-brand-danger' : 'border-brand-primary'}`}>
@@ -387,4 +391,5 @@ const handleDragEnd = (e: React.DragEvent) => {
     </div>
   );
 }
+
 export default Calendar;

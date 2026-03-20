@@ -17,15 +17,38 @@ export interface Room {
   updated_at?: string;
 }
 
+export interface Guest {
+  id: number;
+  full_name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  is_vip: boolean | number;
+  role_id: number;
+}
+
 export interface Booking {
   id: number;
+  guest_id: number;
   room_id: number;
-  user_id: number;
-  title: string;
-  start_time: string;
-  end_time: string;
-  color: string;
+  check_in: string;    // datetime/string
+  check_out: string;   // datetime/string
+  status: string;
+  
+  // --- SNAPSHOT ALANLARI (Yeni eklenenler) ---
+  snapshot_guest_name: string;
+  snapshot_guest_email: string;
+  snapshot_guest_company?: string | null;
+  snapshot_is_vip: boolean | number;
+
+  // İlişkiler (Opsiyonel gelebilir)
   room?: Room;
+  guest?: any; 
+  
+  // Eski kodlardan kalanlar varsa (Hata almamak için opsiyonel bırakabilirsin)
+  start_time?: string;
+  end_time?: string;
+  title?: string;
 }
 
 export interface User {

@@ -6,13 +6,7 @@ export const getBookings = async () => {
   return response.data;
 };
 
-export const createBooking = async (data: {
-  room_id: number;
-  title: string;
-  start_time: string;
-  end_time: string;
-  color?: string;
-}) => {
+export const createBooking = async (data: Partial<Booking>) => {
   const response = await api.post('/bookings', data);
   return response.data;
 };
@@ -35,11 +29,12 @@ export const getAuditLogs = async (limit: number = 20) => {
 export const updateBooking = async (
   id: number, 
   data: { 
-    title?: string; 
-    color?: string; 
+    snapshot_guest_name?: string; // title yerine bu
+    snapshot_guest_role_id?: number;
     room_id?: number; 
-    start_time?: string; 
-    end_time?: string; 
+    check_in?: string; 
+    check_out?: string;
+    guest_data?: any; // Backend'in beklediği asıl yapı
   }
 ) => {
   const response = await api.patch(`/bookings/${id}`, data);

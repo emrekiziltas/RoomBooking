@@ -1,188 +1,193 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createBooking } from '../api/bookings';
+import { searchGuests } from '../api/guests';
 import type { Room } from '../types';
-
-const SLOTS = {
-  morning: { start: '08:30:00', end: '12:30:00' },
-  afternoon: { start: '12:30:00', end: '17:30:00' }
-};
+import { Star, User, X, Search, Loader2, ArrowRight, Calendar as CalIcon, Clock } from 'lucide-react';
 
 interface NewBookingFormProps {
   rooms: Room[];
+  guestRoles: any[];
   onSuccess: () => void;
   onCancel: () => void;
   showToast: (msg: string, type: 'success' | 'error') => void;
 }
 
-export function NewBookingForm({ rooms, onSuccess, onCancel, showToast }: NewBookingFormProps) {
+export function NewBookingForm({ rooms, guestRoles = [], onSuccess, onCancel, showToast }: NewBookingFormProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  
   const [form, setForm] = useState({
     room_id: '',
-    title: '',
-    start_date: new Date().toISOString().split('T')[0],
-    start_slot: 'morning',
-    end_date: new Date().toISOString().split('T')[0],
-    end_slot: 'afternoon',
+    guest_id: null as number | null,
+    snapshot_guest_name: '',
+    snapshot_guest_role_id: 33,
+    snapshot_guest_email: '',
+    snapshot_is_vip: false,
+    check_in: new Date().toISOString().split('T')[0],
+    check_in_time: '14:00',
+    check_out: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Yarına kur
+    check_out_time: '12:00',
   });
 
-  const startTimeStr = `${form.start_date} ${SLOTS[form.start_slot as keyof typeof SLOTS].start}`;
-  const endTimeStr = `${form.end_date} ${SLOTS[form.end_slot as keyof typeof SLOTS].end}`;
+  const h = "h-11";
+  const inputBase = `${h} bg-white border-2 border-slate-800 font-black text-[11px] outline-none transition-all shadow-[3px_3px_0px_#000] focus:shadow-none focus:translate-x-0.5 focus:translate-y-0.5 px-3`;
+  const isDisabled = !form.room_id || !form.snapshot_guest_name.trim() || submitting;
 
-  const isTimeInvalid = new Date(endTimeStr) <= new Date(startTimeStr);
-  const isFormEmpty = !form.room_id || !form.title.trim();
-  const isDisabled = isFormEmpty || isTimeInvalid || submitting;
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (form.snapshot_guest_name.length >= 2 && !form.guest_id) {
+        setSearching(true);
+        try {
+          const results = await searchGuests(form.snapshot_guest_name);
+          setSearchResults(results);
+          setShowResults(true);
+        } catch (err) { console.error(err); } finally { setSearching(false); }
+      } else { setShowResults(false); }
+    }, 400);
+    return () => clearTimeout(delayDebounceFn);
+  }, [form.snapshot_guest_name, form.guest_id]);
 
-  const handleCreate = async () => {
-    if (isDisabled) return;
-    setSubmitting(true);
-    try {
-      await createBooking({
-        ...form,
-        room_id: Number(form.room_id),
-        title: form.title.toUpperCase(),
-        start_time: startTimeStr,
-        end_time: endTimeStr,
-        color: '#4f46e5'
-      });
-      showToast("RESERVATION CREATED ✓", "success");
-      onSuccess();
-    } catch (err: any) {
-      const validationErrors = err.response?.data?.errors;
-      if (validationErrors) {
-        const errorArrays = Object.values(validationErrors) as string[][];
-        if (errorArrays.length > 0 && errorArrays[0].length > 0) {
-          showToast(errorArrays[0][0].toUpperCase(), "error");
-        }
-      } else {
-        showToast((err.response?.data?.message || "ACTION FAILED").toUpperCase(), "error");
-      }
-    } finally {
-      setSubmitting(false);
+  const selectGuest = (guest: any) => {
+    setForm(prev => ({
+      ...prev,
+      guest_id: guest.id,
+      snapshot_guest_name: guest.full_name,
+      snapshot_guest_email: guest.email || '',
+      snapshot_guest_role_id: guest.role_id || prev.snapshot_guest_role_id,
+      snapshot_is_vip: Boolean(guest.is_vip)
+    }));
+    setShowResults(false);
+  };
+
+// NewBookingForm.tsx içindeki handleCreate'i şu şekilde güncelle:
+
+const handleCreate = async () => {
+  if (isDisabled) return;
+  setSubmitting(true);
+  try {
+    // Laravel'in itiraz edemeyeceği temiz bir paket hazırlıyoruz
+    const payload = {
+      room_id: Number(form.room_id),
+      guest_id: form.guest_id, // Null olabilir
+      snapshot_guest_name: form.snapshot_guest_name.toUpperCase().trim(),
+      snapshot_guest_email: form.snapshot_guest_email || 'guest@hotel.com',
+      snapshot_guest_role_id: Number(form.snapshot_guest_role_id),
+      snapshot_is_vip: form.snapshot_is_vip ? 1 : 0,
+      
+      // Tarihleri YYYY-MM-DD HH:mm:ss formatına zorluyoruz
+      check_in: `${form.check_in} ${form.check_in_time}:00`,
+      check_out: `${form.check_out} ${form.check_out_time}:00`,
+    };
+
+    console.log("✈️ Giden Payload:", payload); // Bunu konsoldan kontrol et
+
+    await createBooking(payload);
+    showToast("RESERVATION RECORDED ✓", "success");
+    onSuccess();
+  } catch (err: any) {
+    // 422 hatası aldığında detayları konsola yazdır ki görelim
+    if (err.response && err.response.status === 422) {
+      console.error("❌ VALIDASYON HATASI:", err.response.data.errors);
+      showToast("CHECK FORM FIELDS", "error");
+    } else {
+      showToast("SAVE FAILED", "error");
     }
-  };
-
-  const formatDateLabel = (dateStr: string) => {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-  };
-
-  const h = "h-10";
-  const base = `${h} bg-brand-surface rounded-ini font-black text-xs outline-none border-2 border-transparent transition-all`;
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
-    <div className="bg-white border-[6px] border-brand-secondary px-4 py-3 rounded-ini shadow-2xl animate-in slide-in-from-top duration-300">
-      <div className="flex items-center gap-2">
-
-        {/* RESOURCE */}
-        <select
-          value={form.room_id}
-          onChange={e => setForm({ ...form, room_id: e.target.value })}
-          className={`${base} focus:border-brand-primary px-3 uppercase cursor-pointer w-28 shrink-0`}
-        >
-          <option value="">ROOM</option>
-          {rooms.map(r => <option key={r.id} value={r.id}>{r.name.toUpperCase()}</option>)}
-        </select>
-
-        <div className="w-px h-6 bg-brand-surface shrink-0" />
-
- {/* TITLE / GUEST - flex-1 yaparak genişletildi */}
-<div className="flex-1 min-w-[200px] shrink">
-  <input
-    type="text"
-    placeholder="ENTER MISSION OR GUEST NAME..."
-    value={form.title}
-    onChange={e => setForm({ ...form, title: e.target.value })}
-    onKeyDown={e => e.key === 'Enter' && handleCreate()}
-    // w-36 kaldırıldı, flex-1 ve min-w eklendi
-    className={`${base} w-full focus:border-brand-primary px-4 uppercase tracking-wider text-[11px]`}
-  />
-</div>
-        {/* ARRIVAL */}
-        <div className="flex items-center gap-1 shrink-0">
-          <span className="text-[8px] font-black text-brand-primary uppercase tracking-widest">In</span>
-          <div className="relative">
-            <div className={`${h} flex items-center px-3 bg-brand-surface rounded-ini font-black text-[11px] text-brand-secondary pointer-events-none w-24 justify-center`}>
-              {formatDateLabel(form.start_date)}
-            </div>
-            <input
-              type="date"
-              value={form.start_date}
-              onChange={e => setForm(p => ({ ...p, start_date: e.target.value, end_date: e.target.value }))}
-              className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full
-                         [&::-webkit-calendar-picker-indicator]:absolute
-                         [&::-webkit-calendar-picker-indicator]:inset-0
-                         [&::-webkit-calendar-picker-indicator]:w-full
-                         [&::-webkit-calendar-picker-indicator]:h-full
-                         [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-            />
-          </div>
-          <select
-            value={form.start_slot}
-            onChange={e => setForm({ ...form, start_slot: e.target.value })}
-            className={`${base} focus:border-brand-primary px-2 cursor-pointer w-24`}
-          >
-            <option value="morning">08:30</option>
-            <option value="afternoon">12:30</option>
-          </select>
+    <div className="bg-white border-4 border-slate-800 p-5 shadow-[12px_12px_0px_#000] animate-in fade-in zoom-in duration-200">
+      <div className="grid grid-cols-12 gap-4">
+        
+        {/* SOL KOLON: Misafir Bilgileri */}
+        <div className="col-span-12 lg:col-span-4 flex flex-col gap-3">
+           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Guest Info</label>
+           <div className="relative">
+              <input
+                type="text"
+                placeholder="SEARCH GUEST..."
+                value={form.snapshot_guest_name}
+                onChange={e => setForm({ ...form, snapshot_guest_name: e.target.value, guest_id: null })}
+                className={`${inputBase} w-full pl-10 uppercase ${form.guest_id ? 'bg-blue-50 border-blue-600' : ''}`}
+              />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-800" />
+              {showResults && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border-4 border-slate-800 z-[9999] shadow-[8px_8px_0px_#000] max-h-48 overflow-y-auto">
+                  {searchResults.map(guest => (
+                    <div key={guest.id} onClick={() => selectGuest(guest)} className="p-2 hover:bg-yellow-50 cursor-pointer border-b-2 border-slate-100 flex justify-between items-center font-black text-[10px] uppercase">
+                      <span>{guest.full_name}</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </div>
+                  ))}
+                </div>
+              )}
+           </div>
+           
+           <div className="flex gap-2">
+              <select
+                value={form.snapshot_guest_role_id}
+                onChange={e => setForm({ ...form, snapshot_guest_role_id: Number(e.target.value) })}
+                className={`${inputBase} flex-1 uppercase`}
+              >
+                {guestRoles.map(role => <option key={role.id} value={role.id}>{role.label}</option>)}
+              </select>
+              
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, snapshot_is_vip: !f.snapshot_is_vip }))}
+                className={`${h} px-4 border-2 border-slate-800 flex items-center gap-2 shadow-[3px_3px_0px_#000] active:shadow-none ${form.snapshot_is_vip ? 'bg-yellow-400' : 'bg-slate-50 text-slate-400'}`}
+              >
+                <Star className={`w-4 h-4 ${form.snapshot_is_vip ? 'fill-black' : ''}`} />
+              </button>
+           </div>
         </div>
 
-        <span className="text-brand-muted font-black text-xs shrink-0">→</span>
+        {/* ORTA KOLON: Tarih & Oda */}
+        <div className="col-span-12 lg:col-span-6 flex flex-col gap-3">
+           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stay & Schedule</label>
+           <div className="flex flex-wrap gap-2">
+              <select
+                value={form.room_id}
+                onChange={e => setForm({ ...form, room_id: e.target.value })}
+                className={`${inputBase} w-32 bg-yellow-50 uppercase`}
+              >
+                <option value="">ROOM</option>
+                {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
 
-        {/* DEPARTURE */}
-        <div className="flex items-center gap-1 shrink-0">
-          <span className="text-[8px] font-black text-brand-danger uppercase tracking-widest">Out</span>
-          <div className="relative">
-            <div className={`${h} flex items-center px-3 bg-brand-surface rounded-ini font-black text-[11px] text-brand-secondary pointer-events-none w-24 justify-center`}>
-              {formatDateLabel(form.end_date)}
-            </div>
-            <input
-              type="date"
-              value={form.end_date}
-              onChange={e => setForm({ ...form, end_date: e.target.value })}
-              className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full
-                         [&::-webkit-calendar-picker-indicator]:absolute
-                         [&::-webkit-calendar-picker-indicator]:inset-0
-                         [&::-webkit-calendar-picker-indicator]:w-full
-                         [&::-webkit-calendar-picker-indicator]:h-full
-                         [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-            />
-          </div>
-          <select
-            value={form.end_slot}
-            onChange={e => setForm({ ...form, end_slot: e.target.value })}
-            className={`${base} focus:border-brand-danger px-2 cursor-pointer w-24`}
-          >
-            <option value="morning">12:30</option>
-            <option value="afternoon">17:30</option>
-          </select>
+              <div className="flex items-center border-2 border-slate-800 bg-white shadow-[3px_3px_0px_#000]">
+                <div className="px-2 border-r-2 border-slate-800 bg-slate-100 flex items-center h-full"><CalIcon className="w-3 h-3"/></div>
+                <input type="date" value={form.check_in} onChange={e => setForm({...form, check_in: e.target.value})} className="h-full px-2 text-[10px] font-black outline-none w-28"/>
+                <input type="time" value={form.check_in_time} onChange={e => setForm({...form, check_in_time: e.target.value})} className="h-full px-2 border-l-2 border-slate-800 text-[10px] font-black outline-none w-20"/>
+              </div>
+
+              <div className="flex items-center border-2 border-slate-800 bg-white shadow-[3px_3px_0px_#000]">
+                <div className="px-2 border-r-2 border-slate-800 bg-slate-100 flex items-center h-full"><ArrowRight className="w-3 h-3"/></div>
+                <input type="date" value={form.check_out} onChange={e => setForm({...form, check_out: e.target.value})} className="h-full px-2 text-[10px] font-black outline-none w-28"/>
+                <input type="time" value={form.check_out_time} onChange={e => setForm({...form, check_out_time: e.target.value})} className="h-full px-2 border-l-2 border-slate-800 text-[10px] font-black outline-none w-20"/>
+              </div>
+           </div>
         </div>
 
-        <div className="w-px h-6 bg-brand-surface shrink-0" />
-
-        {/* ACTIONS */}
-        <button
-          onClick={handleCreate}
-          disabled={isDisabled}
-          className={`${h} px-6 rounded-ini font-black text-xs tracking-widest uppercase transition-all whitespace-nowrap active:scale-95 shrink-0
-            ${isDisabled ? 'bg-brand-surface text-brand-muted cursor-not-allowed' : 'bg-brand-primary text-white hover:bg-brand-secondary'}`}
-        >
-          {submitting ? '...' : 'COMMIT ✓'}
-        </button>
-
-        <button
-          onClick={onCancel}
-          className={`${h} w-10 bg-brand-surface text-brand-muted rounded-ini font-black text-sm hover:bg-brand-danger hover:text-white transition-all flex items-center justify-center shrink-0`}
-        >
-          ✕
-        </button>
+        {/* SAĞ KOLON: Aksiyonlar */}
+        <div className="col-span-12 lg:col-span-2 flex items-end justify-end gap-2">
+           <button onClick={onCancel} className={`${h} w-11 flex items-center justify-center border-2 border-slate-800 hover:bg-slate-100 shadow-[3px_3px_0px_#000] active:shadow-none`}>
+              <X className="w-5 h-5" />
+           </button>
+           <button
+              onClick={handleCreate}
+              disabled={isDisabled}
+              className={`${h} flex-1 bg-slate-800 text-white font-black text-[10px] uppercase shadow-[4px_4px_0px_#4f46e5] active:translate-y-1 active:shadow-none disabled:opacity-50`}
+            >
+              {submitting ? '...' : 'COMMIT ✓'}
+           </button>
+        </div>
 
       </div>
-
-      {isTimeInvalid && !isFormEmpty && (
-        <p className="text-[9px] font-black text-brand-danger mt-2 uppercase tracking-widest text-right animate-pulse">
-          ⚠ CHECK-OUT MUST BE AFTER ARRIVAL
-        </p>
-      )}
     </div>
   );
 }

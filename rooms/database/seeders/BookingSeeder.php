@@ -2,66 +2,59 @@
 
 namespace Database\Seeders;
 
+use App\Models\Booking;
+use App\Models\Room;
+use App\Models\Guest;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 use Faker\Factory as Faker;
+use Carbon\Carbon;
 
 class BookingSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('bookings')->truncate();
-
-        $rooms = DB::table('rooms')->get();
-        $users = DB::table('users')->pluck('id')->toArray();
         $faker = Faker::create('en_GB');
-        $bookings = [];
+        $rooms = Room::all();
+        $guests = Guest::all();
 
-        // -7 günden başla, +14 güne kadar git
-        for ($day = -7; $day <= 14; $day++) {
-            $startDate = Carbon::today()->addDays($day);
+        if ($guests->isEmpty() || $rooms->isEmpty()) {
+            $this->command->error("HATA: Önce odaları ve misafirleri (GuestSeeder) doldurmalısın!");
+            return;
+        }
 
-            // Hafta sonu başlangıçlı rezervasyon yapmayalım
-            if ($startDate->isWeekend()) continue;
+        foreach ($rooms as $room) {
+            $bookingCount = rand(1, 2);
 
-            foreach ($rooms as $room) {
-                // Her gün her oda için %30 ihtimalle çoklu gün rezervasyonu başlasın
-                if (rand(1, 100) > 30) continue;
-
-                $userId = $users[array_rand($users)];
+            for ($i = 0; $i < $bookingCount; $i++) {
+                $guest = $guests->random();
                 
-                // RASTGELE SÜRE: 1 ile 4 gün arasında sürsün
-                $durationDays = rand(1, 4); 
-                $endDate = $startDate->copy()->addDays($durationDays);
+                // Roller: 33 (Standard), 34 (Organiser), 35 (Co-organiser)
+                $randomRoleId = rand(33, 35); 
 
-                // Eğer bitiş hafta sonuna denk gelirse Cuma gününe çekelim (opsiyonel)
-                if ($endDate->isWeekend()) {
-                    $endDate = $startDate->copy()->next(Carbon::FRIDAY);
-                }
+                $startDate = Carbon::today()->addDays(rand(0, 15));
+                $endDate = (clone $startDate)->addDays(rand(2, 5));
 
-                $prefix = $room->name[0];
-                $color = $prefix === 'F' ? '#3B82F6' : ($prefix === 'M' ? '#10B981' : '#F97316');
+                Booking::create([
+                    'guest_id'               => $guest->id,
+                    'room_id'                => $room->id,
+                    'check_in'               => $startDate->format('Y-m-d 08:30:00'),
+                    'check_out'              => $endDate->format('Y-m-d 17:00:00'),
+                    'status'                 => $faker->randomElement(['confirmed', 'pending', 'checked_in']),
+                    
+                    // Canlı Rol (Misafirin şu anki rolüyle aynı da yapabilirsin)
+                    'guest_role_id'          => $randomRoleId,
 
-                $bookings[] = [
-                    'room_id'    => $room->id,
-                    'user_id'    => $userId,
-                    'title'      => $faker->name(),
-                    'start_time' => $startDate->format('Y-m-d') . ' 08:30:00',
-                    'end_time'   => $endDate->format('Y-m-d') . ' 16:30:00',
-                    'color'      => $color,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
+                    // --- SNAPSHOT ALANLARI ---
+                    'snapshot_guest_name'    => $guest->full_name,
+                    'snapshot_guest_email'   => $guest->email,
+                    'snapshot_guest_company' => $guest->company,
+                    'snapshot_is_vip'        => $guest->is_vip,
+                    // Rezervasyon anındaki rol donduruluyor:
+                    'snapshot_guest_role_id' => $randomRoleId, 
+                ]);
             }
         }
-
-        // Toplu insert (Performans için)
-        $chunks = array_chunk($bookings, 100);
-        foreach ($chunks as $chunk) {
-            DB::table('bookings')->insert($chunk);
-        }
-
-        $this->command->info(count($bookings) . ' adet (bazıları çoklu gün) booking oluşturuldu.');
+        
+        $this->command->info("Booking tablosuna rollerle birlikte gerçekçi veriler basıldı! 🚀");
     }
 }
