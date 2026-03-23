@@ -22,7 +22,7 @@ Route::post('/auth/google', [AuthController::class, 'googleLogin']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('/guests/search', [GuestController::class, 'search']);
     Route::get('/guests/search', [GuestController::class, 'search']);
-    // --- 🌍 Genel Bilgiler ---
+    Route::apiResource('bookings', BookingController::class)->except(['show']);
     Route::get('floors', [LookupController::class, 'getFloors']);
     Route::get('navigation', [LookupController::class, 'getNavigation']);
     Route::get('lookup-values/type/{typeId}', [LookupController::class, 'getByType']);

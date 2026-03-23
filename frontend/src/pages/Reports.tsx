@@ -1,356 +1,248 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getBookings } from '../api/bookings';
 import { getRooms, getAuditLogs } from '../api/rooms';
+import { getLookupValues } from '../api/lookups'; 
 import { PageHeader } from "../components/PageHeader";
-import type { Booking, Room } from '../types';
-
-type Tab = 'daily' | 'range' | 'audit';
 
 const ACTION_STYLES: Record<string, string> = {
-  created: 'bg-brand-primary/10 text-brand-primary',
+  created: 'bg-emerald-100 text-emerald-700',
   updated: 'bg-amber-100 text-amber-700',
-  deleted: 'bg-brand-danger/10 text-brand-danger',
+  deleted: 'bg-rose-100 text-rose-700',
+  moved: 'bg-blue-100 text-blue-700',
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  title: 'Title',
-  room_id: 'Room',
-  start_time: 'Check-in',
-  end_time: 'Check-out',
+  snapshot_guest_name: 'Guest Name',
+  room_id: 'Room Number',
+  check_in: 'Check-in Date',
+  check_out: 'Check-out Date',
+  status: 'Booking Status',
+  snapshot_is_vip: 'VIP Status',
+  snapshot_guest_role_id: 'Guest Role',
 };
 
 export function Reports() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [guestRoles, setGuestRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'audit'>('daily');
   const [auditLimit, setAuditLimit] = useState(20);
-  const [auditAction, setAuditAction] = useState<'all' | 'created' | 'updated' | 'moved' | 'deleted'>('all');
+  const [reportDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const today = new Date().toISOString().split('T')[0];
-  const [rangeStart, setRangeStart] = useState(today);
-  const [rangeEnd, setRangeEnd] = useState(today);
+  // 1. ROLE MAP
+  const roleMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const rawData = Array.isArray(guestRoles) ? guestRoles : (guestRoles as any)?.data || [];
+    rawData.forEach((r: any) => { if (r.id) map[String(r.id)] = r.label; });
+    return map;
+  }, [guestRoles]);
 
-  const formatDiffValue = (val: any) => {
-  if (!val) return '—';
-  const str = String(val);
-  // Eğer değer bir ISO tarihi ise (içinde T varsa)
-  if (str.includes('T')) {
-    // T'yi boşluğa çevir ve saniye/milisaniye kısmını kes (ilk 16 karakter: YYYY-MM-DD HH:mm)
-    return str.replace('T', ' ').substring(0, 16);
-  }
-  return str;
-};
+  // 2. ROOM MAP
+  const roomMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const rawData = Array.isArray(rooms) ? rooms : (rooms as any)?.data || [];
+    rawData.forEach((r: any) => { if (r.id) map[String(r.id)] = r.name || r.room_number; });
+    return map;
+  }, [rooms]);
+
+  // 3. FORMATTER
+  const formatValue = (val: any, field?: string) => {
+    if (val === null || val === undefined || val === '') return '—';
+    const sVal = String(val);
+    if (field === 'snapshot_guest_role_id') return roleMap[sVal] ? roleMap[sVal].toUpperCase() : `ID: ${sVal}`;
+    if (field === 'room_id') return roomMap[sVal] ? `ROOM ${roomMap[sVal]}` : `RM: ${sVal}`;
+    if (field === 'snapshot_is_vip') return (sVal === '1' || sVal === 'true' || val === true) ? '🌟 VIP' : 'NO';
+    if (sVal.includes('-') && sVal.includes('T')) return sVal.split('T')[0];
+    return sVal.toUpperCase();
+  };
+
+  // 4. DATA FETCHING
   useEffect(() => {
-    setLoading(true);
-    Promise.all([getBookings(), getRooms()])
-      .then(([b, r]) => {
-        setBookings(b.data || b || []);
-        setRooms(r.data || r || []);
-      })
-      .catch(err => console.error("Load Error:", err))
-      .finally(() => setLoading(false));
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [bRes, rRes, lRes] = await Promise.allSettled([
+          getBookings(),
+          getRooms(),
+          getLookupValues(6)
+        ]);
+        if (bRes.status === 'fulfilled') setBookings(bRes.value.data || bRes.value || []);
+        if (rRes.status === 'fulfilled') setRooms(rRes.value.data || rRes.value || []);
+        if (lRes.status === 'fulfilled') setGuestRoles(lRes.value.data || lRes.value || []);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
   useEffect(() => {
     if (activeTab === 'audit') {
-      setLoading(true);
       getAuditLogs(auditLimit)
-        .then(data => setAuditLogs(data))
-        .catch(() => setAuditLogs([]))
-        .finally(() => setLoading(false));
+        .then(res => setAuditLogs(Array.isArray(res) ? res : res.data || []))
+        .catch(() => setAuditLogs([]));
     }
-  }, [auditLimit, activeTab]);
+  }, [activeTab, auditLimit]);
 
-  const reportData = useMemo(() => {
-    const dateStr = new Date(reportDate).toISOString().split('T')[0];
-    const sortByGuestName = (a: any, b: any) => (a.title || "").trim().localeCompare((b.title || "").trim(), 'tr', { sensitivity: 'base' });
+  // 5. KPI & TABLE CALCULATIONS
+  const stats = useMemo(() => {
+    const todayIns = bookings.filter(b => b.check_in?.startsWith(reportDate));
+    const todayOuts = bookings.filter(b => b.check_out?.startsWith(reportDate));
+    const totalRooms = rooms.length;
+    const occupied = bookings.filter(b => 
+      reportDate >= (b.check_in?.split('T')[0]) && reportDate < (b.check_out?.split('T')[0])
+    );
+    const occupancyRate = totalRooms > 0 ? Math.round((occupied.length / totalRooms) * 100) : 0;
+    const vips = occupied.filter(b => b.snapshot_is_vip).length;
 
-    const ins = bookings.filter(b => b.start_time?.startsWith(dateStr)).sort(sortByGuestName);
-    const outs = bookings.filter(b => b.end_time?.startsWith(dateStr)).sort(sortByGuestName);
-    const stays = bookings.filter(b => {
-      const s = b.start_time?.split(/[\sT]/)[0];
-      const e = b.end_time?.split(/[\sT]/)[0];
-      return dateStr > s && dateStr < e;
-    }).sort(sortByGuestName);
-
-    const occupiedRoomIds = [...ins, ...stays].map(b => b.room?.id || (b as any).room_id);
-    const vacantList = rooms.filter(r => !occupiedRoomIds.includes(r.id));
-
-    return { checkIns: ins, checkOuts: outs, stayOvers: stays, vacantRooms: vacantList };
+    return { todayIns, todayOuts, occupancyRate, vips, occupied, totalRooms };
   }, [bookings, rooms, reportDate]);
 
-  const rangeData = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return [];
-    return bookings
-      .filter(b => {
-        const bStart = b.start_time?.split(/[\sT]/)[0];
-        const bEnd = b.end_time?.split(/[\sT]/)[0];
-        return bStart <= rangeEnd && bEnd >= rangeStart;
-      })
-      .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'tr', { sensitivity: 'base' }));
-  }, [bookings, rangeStart, rangeEnd]);
-
   return (
-    <div className="min-h-screen bg-brand-surface font-brand">
-      {/* HEADER SECTION */}
-      <div className="max-w-7xl mx-auto px-4 pt-4 print:hidden">
-        <div className="flex flex-col md:flex-row justify-between items-end border-b border-brand-surface pb-4">
-          <div className="flex-1 w-full">
-            <PageHeader highlight="OPERATIONAL" title="REPORTS" subtitle="Matrix Analysis & Audit Logs" />
-          </div>
-          <button onClick={() => window.print()} className="bg-brand-secondary text-white px-6 py-3.5 rounded-ini font-black uppercase text-[9px] tracking-widest hover:bg-brand-primary transition-all shadow-lg active:scale-95 mt-4 md:mt-0">
-            PRINT
+    <div className="min-h-screen bg-brand-surface font-brand p-6">
+      <PageHeader highlight="MANAGEMENT" title="OPERATIONAL REPORTS" subtitle="Audit Logs & Status" />
+
+      {/* KPI SECTION */}
+      {activeTab === 'daily' && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8 animate-in fade-in slide-in-from-top-4">
+          <KPICard title="Occupancy" value={`${stats.occupancyRate}%`} sub={`${stats.occupied.length}/${stats.totalRooms} Rooms`} color="border-brand-primary" />
+          <KPICard title="Today's Arrivals" value={stats.todayIns.length} sub="Check-ins" color="border-emerald-500" />
+          <KPICard title="Today's Departures" value={stats.todayOuts.length} sub="Check-outs" color="border-rose-500" />
+          <KPICard title="VIP Guests" value={stats.vips} sub="Currently In-House" color="border-amber-500" />
+        </div>
+      )}
+
+      {/* TABS */}
+      <div className="mt-8 flex gap-2 bg-white p-1 border-2 border-brand-surface rounded-ini w-fit shadow-sm">
+        {(['daily', 'audit'] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)} className={`px-8 py-2.5 rounded-ini text-[11px] font-black uppercase transition-all ${activeTab === tab ? 'bg-brand-secondary text-white shadow-md' : 'text-brand-muted hover:bg-brand-surface'}`}>
+            {tab === 'daily' ? 'Live Status' : 'Audit Trail'}
           </button>
-        </div>
+        ))}
       </div>
 
-      {/* TABS SECTION */}
-      <div className="max-w-7xl mx-auto px-4 mt-6 print:hidden">
-        <div className="flex gap-1 bg-white border-2 border-brand-surface rounded-ini p-1 w-fit shadow-sm">
-          {(['daily', 'range', 'audit'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setActiveTab(t)}
-              className={`px-6 py-2 rounded-ini font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === t ? 'bg-brand-secondary text-white shadow-sm' : 'text-brand-muted hover:text-brand-secondary'}`}
-            >
-              {t === 'audit' ? 'Audit Log' : t === 'daily' ? 'Daily' : 'Date Range'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 mt-6 pb-20">
+      <div className="mt-8">
         {loading ? (
-          <div className="h-[50vh] flex flex-col items-center justify-center gap-4 text-brand-secondary/30">
-            <div className="w-8 h-8 border-4 border-brand-surface border-t-brand-secondary rounded-full animate-spin" />
-            <span className="font-black uppercase text-[9px] tracking-[0.4em] animate-pulse">Synchronizing...</span>
+          <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 border-t-brand-secondary rounded-full animate-spin" /></div>
+        ) : activeTab === 'daily' ? (
+          <div className="bg-white border-2 border-brand-surface rounded-ini overflow-hidden shadow-sm animate-in fade-in">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-brand-surface/30 text-[10px] font-black uppercase text-brand-secondary">
+                  <th className="p-4">Guest & Role</th>
+                  <th className="p-4">Room</th>
+                  <th className="p-4">Check-In</th>
+                  <th className="p-4">Check-Out</th>
+                  <th className="p-4 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-surface">
+                {stats.occupied.length === 0 ? (
+                  <tr><td colSpan={5} className="p-10 text-center text-[10px] font-bold opacity-30 uppercase">No active bookings for today</td></tr>
+                ) : (
+                  stats.occupied.map((b) => (
+                    <tr key={b.id} className="hover:bg-brand-surface/10 transition-colors text-[11px]">
+                      <td className="p-4">
+                        <div className="font-black text-brand-secondary uppercase">{b.snapshot_guest_name || 'N/A'}</div>
+                        <div className="text-[8px] font-bold text-brand-muted uppercase">{formatValue(b.snapshot_guest_role_id, 'snapshot_guest_role_id')}</div>
+                      </td>
+                      <td className="p-4 font-black text-brand-primary">{roomMap[String(b.room_id)] || 'TBA'}</td>
+                      <td className="p-4 font-bold text-brand-muted">{formatValue(b.check_in)}</td>
+                      <td className="p-4 font-bold text-brand-muted">{formatValue(b.check_out)}</td>
+                      <td className="p-4 text-right">
+                        <span className={`px-2 py-1 rounded-[4px] text-[8px] font-black uppercase ${b.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-surface text-brand-muted'}`}>
+                          {b.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <>
-            {/* DAILY TAB */}
-            {activeTab === 'daily' && (
-              <div className="animate-in fade-in duration-500">
-                <div className="flex justify-end mb-6">
-                  <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
-                    <span className="text-[8px] font-black text-brand-muted uppercase tracking-widest">Date</span>
-                    <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} className="bg-transparent font-black outline-none text-brand-secondary cursor-pointer text-[10px] uppercase" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="flex flex-col gap-4">
-                    <StatCard label="Arrivals" value={reportData.checkIns.length} color="text-brand-primary" />
-                    <DataColumn title="Expected Arrivals" data={reportData.checkIns} accentColor="text-brand-primary" />
-                  </div>
-                  <div className="flex flex-col gap-4">
-                    <StatCard label="Departures" value={reportData.checkOuts.length} color="text-brand-danger" />
-                    <DataColumn title="Expected Departures" data={reportData.checkOuts} accentColor="text-brand-danger" />
-                  </div>
-                  <div className="flex flex-col gap-4">
-                    <StatCard label="In-House" value={reportData.stayOvers.length} color="text-brand-info" />
-                    <DataColumn title="Current Stays" data={reportData.stayOvers} accentColor="text-brand-info" />
-                  </div>
-                  <div className="flex flex-col gap-4">
-                    <StatCard label="Vacant" value={reportData.vacantRooms.length} color="text-brand-muted" />
-                    <DataColumn title="Available Now" data={reportData.vacantRooms} accentColor="text-brand-muted" isRoomOnly />
-                  </div>
-                </div>
-              </div>
-            )}
+          /* AUDIT TRAIL TAB */
+          <div className="bg-white border-2 border-brand-surface rounded-ini overflow-hidden shadow-sm">
+            <div className="flex justify-between items-center p-4 bg-brand-surface/20 border-b">
+              <h4 className="text-[10px] font-black uppercase text-brand-secondary">System Audit Trail</h4>
+              <select value={auditLimit} onChange={e => setAuditLimit(Number(e.target.value))} className="text-[10px] font-bold border rounded px-2 py-1 outline-none">
+                <option value={20}>Last 20</option>
+                <option value={50}>Last 50</option>
+              </select>
+            </div>
+            <div className="divide-y divide-brand-surface">
+              {auditLogs.map((log: any) => {
+                const oldD = log.old_data || {};
+                const newD = log.new_data || {};
+                const diffs = log.action === 'updated' ? Object.keys(FIELD_LABELS).filter(k => String(oldD[k]) !== String(newD[k])) : [];
 
-            {/* RANGE TAB */}
-            {activeTab === 'range' && (
-              <div className="animate-in fade-in duration-500">
-                <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
-                      <span className="text-[8px] font-black text-brand-primary uppercase tracking-widest">From</span>
-                      <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="bg-transparent font-black outline-none text-brand-secondary text-[10px]" />
+                return (
+                  <div key={log.id} className="grid grid-cols-12 p-5 gap-4 hover:bg-brand-surface/5 transition-colors items-start">
+                    <div className="col-span-1">
+                      <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${ACTION_STYLES[log.action]}`}>{log.action}</span>
                     </div>
-                    <span className="text-brand-muted font-black text-xs">→</span>
-                    <div className="bg-white border border-brand-surface rounded-ini px-4 py-2.5 shadow-sm flex items-center gap-3">
-                      <span className="text-[8px] font-black text-brand-danger uppercase tracking-widest">To</span>
-                      <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="bg-transparent font-black outline-none text-brand-secondary text-[10px]" />
+                    <div className="col-span-3">
+                      <p className="font-black text-[11px] text-brand-secondary uppercase truncate">
+                        {log.action === 'deleted' ? (oldD.snapshot_guest_name || 'Removed') : (newD.snapshot_guest_name || 'System')}
+                      </p>
+                      <p className="text-[8px] text-brand-muted font-bold mt-1">LOG #{log.id} • B-ID: {log.booking_id}</p>
                     </div>
-                  </div>
-                  <StatCard label="Total Bookings" value={rangeData.length} color="text-brand-primary" />
-                </div>
-                <div className="ini-card bg-white overflow-hidden shadow-sm border border-brand-surface/50">
-                  <div className="grid grid-cols-12 px-4 py-3 bg-brand-surface/50 text-[9px] font-black text-brand-muted uppercase">
-                    <span className="col-span-4">Guest / Title</span>
-                    <span className="col-span-2">Room</span>
-                    <span className="col-span-3">Check-in</span>
-                    <span className="col-span-3">Check-out</span>
-                  </div>
-                  <div className="divide-y divide-brand-surface">
-                    {rangeData.length === 0 ? (
-                      <div className="py-16 text-center text-brand-muted opacity-30 italic">No bookings in this range</div>
-                    ) : (
-                      rangeData.map((item: any) => (
-                        <div key={item.id} className="grid grid-cols-12 px-4 py-4 items-center">
-                          <span className="col-span-4 font-black text-brand-secondary text-[10px] uppercase truncate pr-4">{item.title}</span>
-                          <span className="col-span-2 text-[10px] font-black uppercase text-brand-muted">{item.room?.name || '—'}</span>
-                          <span className="col-span-3 text-[10px] font-medium tabular-nums">{new Date(item.start_time).toLocaleDateString('en-GB')}</span>
-                          <span className="col-span-3 text-[10px] font-medium tabular-nums">{new Date(item.end_time).toLocaleDateString('en-GB')}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* AUDIT TAB */}
-            {activeTab === 'audit' && (
-              <div className="animate-in fade-in duration-500">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-[10px] font-black text-brand-secondary uppercase tracking-widest italic">
-                    System Audit — Last {auditLimit} Entries
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1 bg-white border-2 border-brand-surface rounded-ini p-1">
-                      {(['all', 'created', 'updated', 'deleted'] as const).map(a => (
-                        <button
-                          key={a}
-                          onClick={() => setAuditAction(a)}
-                          className={`px-3 py-1 rounded-ini font-black text-[9px] uppercase tracking-widest transition-all ${auditAction === a ? 'bg-brand-secondary text-white' : 'text-brand-muted hover:text-brand-secondary'}`}
-                        >
-                          {a}
-                        </button>
-                      ))}
-                    </div>
-                    <select
-                      value={auditLimit}
-                      onChange={(e) => setAuditLimit(Number(e.target.value))}
-                      className="bg-white border-2 border-brand-surface rounded-ini px-3 py-1.5 font-black text-[10px] uppercase outline-none"
-                    >
-                      <option value={20}>Last 20</option>
-                      <option value={50}>Last 50</option>
-                      <option value={100}>Last 100</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="ini-card bg-white shadow-sm border border-brand-surface/50 overflow-hidden">
-                  <div className="grid grid-cols-12 px-4 py-3 bg-brand-surface/30 border-b border-brand-surface text-[8px] font-black text-brand-muted uppercase">
-                    <span className="col-span-1">Act</span>
-                    <span className="col-span-3">Guest / Title</span>
-                    <span className="col-span-1 text-center">Room</span>
-                    <span className="col-span-5 pl-4">Changes & History</span>
-                    <span className="col-span-2 text-right">Date</span>
-                  </div>
-
-                  <div className="divide-y divide-brand-surface">
-                    {(() => {
-                      const filtered = auditAction === 'all' ? auditLogs : auditLogs.filter((l: any) => l.action === auditAction);
-                      if (filtered.length === 0) return (
-                        <div className="py-12 text-center text-brand-muted opacity-20 italic uppercase text-[7px]">No Logs Found</div>
-                      );
-
-                      return filtered.map((log: any) => {
-                        const title = log.new_data?.title || log.old_data?.title || '—';
-                        const diff: any[] = log.diff || [];
-                        return (
-                          <div key={log.id} className="grid grid-cols-12 px-4 py-4 items-start hover:bg-brand-surface/20 transition-all border-b border-brand-surface/10">
-                            <div className="col-span-1">
-                              <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase ${ACTION_STYLES[log.action] || 'bg-brand-surface text-brand-muted'}`}>
-                                {log.action}
-                              </span>
-                            </div>
-                            <span className="col-span-3 font-black text-brand-secondary text-[10px] uppercase truncate pr-4">
-                              {title}
-                            </span>
-                            <div className="col-span-1 flex justify-center">
-                              <span className="bg-brand-secondary/10 text-brand-secondary px-2 py-0.5 rounded text-[9px] font-black border border-brand-secondary/20">
-                                {log.room || '—'}
-                              </span>
-                            </div>
-                            <div className="col-span-5 flex flex-col gap-1.5 border-l border-brand-surface pl-4">
-                              {diff.length === 0 ? (
-                                <span className="text-[8px] text-brand-muted/40 italic uppercase tracking-tighter">
-                                  {log.action === 'created' ? '• Initializing record' : '• System note: No field changes'}
-                                </span>
-                              ) : (
-                                diff.map((d: any) => (
-                                  <div key={d.field} className="flex items-center gap-2 text-[9px]">
-                                    {/* Değişen satır burası: String(d.old) yerine formatDiffValue(d.old) kullanıyoruz */}
-<div className="flex items-center bg-brand-surface/30 rounded px-1.5 py-0.5 border border-brand-surface shadow-sm overflow-hidden">
-  <span className="text-brand-danger/60 line-through px-1 truncate max-w-[120px] text-[8px]">
-    {formatDiffValue(d.old)}
-  </span>
-  <span className="text-brand-muted px-1 opacity-30">→</span>
-  <span className="text-brand-primary font-bold px-1 truncate max-w-[120px] text-[8px]">
-    {formatDiffValue(d.new)}
-  </span>
-</div>
-                            
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                            <span className="col-span-2 text-right text-[8px] font-black text-brand-muted tabular-nums pt-0.5 italic">
-                              {log.created_at ? new Date(log.created_at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—'}
-                            </span>
+                    <div className="col-span-6 border-l pl-5">
+                      {log.action === 'deleted' ? (
+                        <div className="p-3 bg-rose-50 border-l-4 border-rose-400 rounded-r-ini shadow-sm text-[10px]">
+                          <span className="text-[7px] font-black text-white uppercase bg-rose-500 px-2 py-0.5 rounded shadow-sm mb-2 inline-block">Permanent Deletion</span>
+                          <div className="grid grid-cols-2 gap-2">
+                             <div className="font-black text-rose-900 uppercase">{oldD.snapshot_guest_name}</div>
+                             <div className="text-right text-rose-800 italic">{formatValue(oldD.check_in)} → {formatValue(oldD.check_out)}</div>
                           </div>
-                        );
-                      });
-                    })()}
+                        </div>
+                      ) : log.action === 'created' ? (
+                        <div className="p-3 bg-emerald-50 border-l-4 border-emerald-400 rounded-r-ini shadow-sm text-[10px] text-emerald-900 leading-relaxed">
+                          <span className="text-[7px] font-black text-white uppercase bg-emerald-500 px-2 py-0.5 rounded shadow-sm mb-2 inline-block">New Entry Created</span>
+                          <br />Booking for <span className="font-black">{newD.snapshot_guest_name}</span> in <span className="font-black">{formatValue(newD.room_id, 'room_id')}</span>.
+                        </div>
+                      ) : diffs.length > 0 ? (
+                        <div className="space-y-2">
+                          <span className="text-[7px] font-black text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded border border-amber-100 mb-1 inline-block">Field Modifications</span>
+                          {diffs.map(k => (
+                            <div key={k} className="flex flex-col gap-1 border-b border-brand-surface/30 pb-1 last:border-0">
+                              <span className="text-[7px] font-black text-brand-muted uppercase">{FIELD_LABELS[k] || k}</span>
+                              <div className="flex items-center gap-2 text-[9px] font-bold">
+                                <span className="text-rose-500 line-through opacity-60 bg-rose-50 px-1 rounded">{formatValue(oldD[k], k)}</span>
+                                <span className="text-brand-muted">→</span>
+                                <span className="text-emerald-600 bg-emerald-50 px-1 rounded">{formatValue(newD[k], k)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-[9px] text-brand-muted opacity-50 italic py-2">Operational metadata synchronized.</div>
+                      )}
+                    </div>
+                    <div className="col-span-2 text-right text-[9px] font-bold text-brand-muted">
+                      {new Date(log.created_at).toLocaleString('tr-TR')}
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
-          </>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// --- HELPERS ---
-
-function StatCard({ label, value, color }: any) {
+function KPICard({ title, value, sub, color }: any) {
   return (
-    <div className="ini-card p-6 bg-white border border-brand-surface shadow-sm">
-      <p className="text-[8px] font-black uppercase text-brand-muted tracking-[0.25em]">{label}</p>
-      <p className={`text-4xl font-black mt-2 leading-none tracking-tighter ${color}`}>{value}</p>
+    <div className={`bg-white border-2 border-brand-surface border-t-4 ${color} p-5 rounded-ini shadow-sm`}>
+      <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest">{title}</p>
+      <h2 className="text-2xl font-black text-brand-secondary mt-1">{value}</h2>
+      <p className="text-[9px] font-bold text-brand-muted/60 mt-1 uppercase">{sub}</p>
     </div>
   );
 }
 
-function DataColumn({ title, data, accentColor, isRoomOnly }: any) {
-  const isEmpty = data.length === 0;
-  return (
-    <div className="space-y-4">
-      <div className="border-b-2 border-brand-surface pb-3">
-        <h3 className={`font-black uppercase tracking-[0.1em] text-[10px] italic ${accentColor}`}>{title}</h3>
-      </div>
-      <div className="ini-card bg-white overflow-hidden shadow-sm border border-brand-surface/50 min-h-[100px]">
-        <div className="divide-y divide-brand-surface">
-          {isRoomOnly ? (
-            data.sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((room: any) => (
-              <div key={room.id} className="px-4 py-3.5 flex justify-between items-center hover:bg-brand-surface/20 transition-all group">
-                <span className="font-black text-brand-secondary text-[11px] tracking-tight">{room.name}</span>
-                <div className="w-1.5 h-1.5 rounded-full bg-brand-success opacity-30 group-hover:opacity-100 transition-opacity" />
-              </div>
-            ))
-          ) : (
-            data.map((item: any) => (
-              <div key={item.id} className="px-4 py-4 flex justify-between items-center hover:bg-brand-surface/20 transition-all">
-                <span className="font-black text-brand-secondary uppercase truncate text-[10px] tracking-tight leading-none pr-2">{item.title}</span>
-                <span className="text-[9px] font-black bg-brand-secondary text-white px-2 py-1 rounded-sm uppercase tracking-tighter shadow-sm shrink-0 ml-2">
-                  {item.room?.name}
-                </span>
-              </div>
-            ))
-          )}
-          {isEmpty && (
-            <div className="py-12 text-center text-brand-muted font-black uppercase text-[7px] tracking-[0.3em] opacity-20 italic">Empty Log</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-export default Reports
+export default Reports;
