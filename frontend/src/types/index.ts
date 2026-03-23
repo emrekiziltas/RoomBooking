@@ -40,6 +40,7 @@ export interface Booking {
   snapshot_guest_email: string;
   snapshot_guest_company?: string | null;
   snapshot_is_vip: boolean | number;
+  snapshot_guest_role_id: number;
 
   // İlişkiler (Opsiyonel gelebilir)
   room?: Room;

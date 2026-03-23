@@ -144,17 +144,40 @@ export function Calendar() {
     return { isShadow, isConflict };
   };
 
-  const handleUpdate = async (id: number, data: any) => {
-    try {
-      const response = await updateBooking(id, data);
-      if ((response as any).success) {
-        setBookings(prev => prev.map(b => b.id === id ? (response as any).data : b));
-        setEditingBooking(null);
-      }
-    } catch (err) {
-      console.error("DB Update fail", err);
+const handleUpdate = async (id: number, data: any) => {
+  console.log("--- UPDATE BAŞLADI ---");
+  console.log("1. Gönderilen ID:", id);
+  console.log("2. Gönderilen Payload:", data);
+
+  try {
+    const response = await updateBooking(id, data);
+    
+    console.log("3. API'den Gelen Ham Yanıt (Raw Response):", response);
+
+    // API yanıt yapısını kontrol et (Bazı API'ler direkt datayı döner, bazıları {data: ...} döner)
+    if (response) {
+      console.log("4. Yanıt Başarılı Görünüyor, State Güncelleniyor...");
+      
+      // Eğer API {success: true, data: {...}} dönüyorsa response.data kullan
+      // Eğer API direkt güncellenmiş objeyi dönüyorsa response kullan
+      const updatedItem = (response as any).data || response;
+
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, ...updatedItem } : b));
+      setEditingBooking(null);
+      
+      // Veritabanına gerçekten yazılıp yazılmadığını teyit etmek için:
+      console.log("5. State güncellendi, DB teyidi için fetchData çağrılıyor...");
+      await fetchData(); 
+      
+      setToast({ msg: "UPDATED ✓", type: 'success' });
     }
-  };
+  } catch (err: any) {
+    console.error("!!! API HATASI (CATCH) !!!");
+    console.error("Hata Detayı:", err.response?.data || err.message);
+    setToast({ msg: "DB UPDATE FAIL", type: 'error' });
+  }
+  console.log("--- UPDATE BİTTİ ---");
+};
 
   const handleDelete = async (id: number) => {
     try {
@@ -305,6 +328,12 @@ export function Calendar() {
               <Fragment key={floor}>
                 <tr
                   className="bg-slate-800 text-white h-10 cursor-pointer hover:bg-slate-700 transition-colors"
+                  onDragEnter={() => {
+        if (draggedBooking && collapsedFloors.includes(floor)) {
+          setCollapsedFloors(prev => prev.filter(f => f !== floor));
+        }
+      }}
+
                   onClick={() => setCollapsedFloors(prev =>
                     prev.includes(floor) ? prev.filter(f => f !== floor) : [...prev, floor]
                   )}
@@ -320,7 +349,15 @@ export function Calendar() {
                   .map(room => (
                     <tr key={room.id} className="border-b border-slate-100 group">
                       <td className="sticky left-0 z-20 bg-white p-3 border-r-2 border-slate-800 font-black italic uppercase text-slate-800 text-sm">
-                        {room.name}
+<div className="flex items-baseline gap-2">
+    {/* Oda İsmi */}
+    <span className="whitespace-nowrap">{room.name}</span>
+    
+    {/* Kapasite: 'ml-auto' ile en sağa yaslayabilir veya 'ml-2' ile sadece yanına boşluk verebilirsin */}
+    <span className="text-[10px] not-italic font-bold text-slate-400 uppercase tracking-tight">
+      cap: {room.capacity}
+    </span>
+  </div>
                       </td>
                       {days.map(day => {
                         const dateStr = day.toISOString().split('T')[0];
@@ -342,16 +379,36 @@ export function Calendar() {
                                 : ''}`}
                           >
                             {!isShadow && dayBookings.map(b => (
-                              <div
-                                key={b.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, b)}
-                                onDragEnd={handleDragEnd}
-                                onClick={() => setEditingBooking(b)}
-                                className={`bg-brand-secondary text-white mb-0.5 rounded-sm cursor-grab font-black shadow-md uppercase tracking-tighter truncate ${bookingTextSize}`}
-                              >
-                                {(b as any).snapshot_guest_name || (b as any).guest?.full_name || "GUEST"}
-                              </div>
+<div
+  key={b.id}
+  draggable
+  onDragStart={(e) => handleDragStart(e, b)}
+  onClick={() => setEditingBooking(b)}
+  className={`group relative flex items-center bg-brand-secondary text-white mb-0.5 rounded-sm cursor-grab font-black shadow-md uppercase tracking-tighter ${bookingTextSize} ${
+    b.status === 'checked_in' ? '!bg-green-600' : ''
+  }`}
+>
+  {/* Metin Alanı - Padding-right ekledik ki butonun altında kalmasın */}
+  <span className="truncate pr-5">
+    {(b as any).snapshot_guest_name || "GUEST"}
+  </span>
+
+  {/* HIZLI CHECK-IN BUTONU */}
+  {b.status !== 'checked_in' && (
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation(); // Modalın açılmasını kesin olarak engeller
+        handleUpdate(b.id, { status: 'checked_in' });
+      }}
+      // Absolute kullanarak yerleşimi sabitledik, titremeyi engelledik
+      className="absolute right-1 opacity-0 group-hover:opacity-100 bg-white text-green-600 rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-sm hover:scale-110 transition-all z-10"
+      title="Check In"
+    >
+      ✓
+    </button>
+  )}
+</div>
                             ))}
                           </td>
                         );

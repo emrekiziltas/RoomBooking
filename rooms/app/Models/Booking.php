@@ -19,7 +19,7 @@ protected $fillable = [
     'guest_id',
     'check_in',
     'check_out',
-    'status_id',
+    'status',
     'type_id',
     // YENİ ALANLAR BURAYA:
     'snapshot_guest_name',

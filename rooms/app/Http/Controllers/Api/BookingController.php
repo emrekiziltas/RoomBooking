@@ -63,148 +63,140 @@ public function index(Request $request)
 
 
 public function store(Request $request)
-{
-    try {
-        // 1. Validasyon: Buradaki alanlar frontend'den gelen ham verilerdir.
-        $validated = $request->validate([
-            'room_id'                => 'required|exists:rooms,id',
-            'check_in'               => 'required',
-            'check_out'              => 'required',
-            'guest_id'               => 'nullable|exists:guests,id',
-            // Aşağıdakileri 'nullable' yaparak 422 hatasının önüne geçiyoruz
-            'snapshot_guest_name'    => 'nullable|string',
-            'snapshot_guest_email'   => 'nullable|string',
-            'snapshot_guest_role_id' => 'nullable', 
-        ]);
-
-        $room = Room::findOrFail($validated['room_id']);
-
-        // 2. Veri Hazırlama (Update mantığı ile tam eşlenik)
-        
-        // İSİM: Eğer direkt gelmediyse guest_data objesinin içine bak
-        $guestName = $request->input('snapshot_guest_name') 
-                     ?? $request->input('guest_data.full_name')
-                     ?? 'GUEST'; // Hiçbiri yoksa varsayılan
-
-        // EMAIL: Boş kalmaması için kesin bir değer atıyoruz (1364 hatasını önler)
-        $guestEmail = $request->input('snapshot_guest_email') 
-                      ?? $request->input('guest_data.email') 
-                      ?? 'guest@hotel.com'; 
-
-        // ROL:
-        $guestRole = $request->input('snapshot_guest_role_id') 
-                     ?? $request->input('guest_data.role_id') 
-                     ?? 33;
-
-        // VIP:
-        $isVip = $request->has('snapshot_is_vip') 
-                 ? $request->boolean('snapshot_is_vip') 
-                 : $request->boolean('guest_data.is_vip');
-
-        // 3. Çakışma Kontrolü
-        if (!$this->isAvailable($validated['room_id'], $validated['check_in'], $validated['check_out'], $room->capacity)) {
-            return response()->json(['success' => false, 'message' => "Oda kapasitesi dolu!"], 422);
-        }
-
-        // 4. Kayıt İşlemi
-        $booking = DB::transaction(function () use ($validated, $guestName, $guestEmail, $guestRole, $isVip) {
-            
-            return Booking::create([
-                'room_id'                => $validated['room_id'],
-                'guest_id'               => $validated['guest_id'] ?? null,
-                'check_in'               => $validated['check_in'],
-                'check_out'              => $validated['check_out'],
-                'snapshot_guest_name'    => $guestName,
-                'snapshot_guest_email'   => $guestEmail,
-                'snapshot_guest_role_id' => $guestRole,
-                'snapshot_is_vip'        => $isVip,
-                // Eğer veritabanında status_id/type_id VARSA buraya ekle, YOKSA ekleme.
-            ]);
-        });
-
-        // 5. Log Kaydı
+    {
         try {
-            BookingLog::create([
-                'booking_id' => $booking->id,
-                'user_id'    => auth()->id(),
-                'action'     => 'created',
-                'new_data'   => $booking->toArray(),
+            // 1. Validasyon
+            $validated = $request->validate([
+                'room_id'                => 'required|exists:rooms,id',
+                'check_in'               => 'required',
+                'check_out'              => 'required',
+                'guest_id'               => 'nullable|exists:guests,id',
+                'snapshot_guest_name'    => 'nullable|string',
+                'snapshot_guest_email'   => 'nullable|string',
+                'snapshot_guest_role_id' => 'nullable', 
+                'status'                 => 'sometimes|string',
+                'snapshot_is_vip'        => 'sometimes'
             ]);
-        } catch (\Exception $logEx) {
-            Log::warning("Log kaydı yapılamadı: " . $logEx->getMessage());
+
+            $room = Room::findOrFail($validated['room_id']);
+
+            // 2. Veri Hazırlama (Frontend'den gelen yapıya göre güvenli çekim)
+            $guestName  = $request->input('snapshot_guest_name') ?? 'GUEST';
+            $guestEmail = $request->input('snapshot_guest_email') ?? 'guest@hotel.com';
+            $guestRole  = $request->input('snapshot_guest_role_id') ?? 33;
+            $isVip      = $request->boolean('snapshot_is_vip', false);
+
+            // 3. Çakışma Kontrolü
+            if (!$this->isAvailable($validated['room_id'], $validated['check_in'], $validated['check_out'], $room->capacity)) {
+                return response()->json(['success' => false, 'message' => "Room capacity full!"], 422);
+            }
+         $rawName = $request->input('snapshot_guest_name') 
+           ?? $request->input('guest_data.full_name') 
+           ?? 'Guest User';
+
+// İlk harfleri büyük, gerisini küçük yapıyoruz (Örn: "ahmet yılmaz" -> "Ahmet Yılmaz")
+$guestName = mb_convert_case($rawName, MB_CASE_TITLE, "UTF-8");
+
+            // 4. Kayıt İşlemi
+            // 'status' değerini frontend'deki dropdown'dan (confirmed, checked_in vb.) alıyoruz
+            $status = $request->input('status', 'confirmed');
+
+            $booking = DB::transaction(function () use ($validated, $guestName, $guestEmail, $guestRole, $isVip, $status) {
+                return Booking::create([
+                    'room_id'                => $validated['room_id'],
+                    'guest_id'               => $validated['guest_id'] ?? null,
+                    'check_in'               => $validated['check_in'],
+                    'check_out'              => $validated['check_out'],
+                    'snapshot_guest_name'    => $guestName,
+                    'snapshot_guest_email'   => $guestEmail,
+                    'snapshot_guest_role_id' => $guestRole,
+                    'snapshot_is_vip'        => $isVip,
+                    'status'                 => $status, 
+                ]);
+            });
+
+            // 5. Log Kaydı (Hata almaması için $request yerine $booking kullanıyoruz)
+            try {
+                BookingLog::create([
+                    'booking_id' => $booking->id,
+                    'user_id'    => auth()->id(),
+                    'action'     => 'created',
+                    'new_data'   => $booking->toArray(),
+                ]);
+            } catch (\Exception $logEx) {
+                Log::warning("Log fail: " . $logEx->getMessage());
+            }
+
+            // ÖNEMLİ: guest ilişkisi Modelde 'guest()' olarak tanımlı olmalı
+            return response()->json([
+                'success' => true, 
+                'data' => new BookingResource($booking->load(['room', 'guest']))
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error("--- [!] STORE HATASI ---: " . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
-
-        return response()->json([
-            'success' => true, 
-            'data' => new BookingResource($booking->load(['room', 'guest']))
-        ], 201);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        // 422 Hatalarını logda detaylı görelim
-        Log::error("Validasyon Hatası: ", $e->errors());
-        return response()->json(['success' => false, 'errors' => $e->errors()], 422);
-    } catch (\Exception $e) {
-        Log::error("--- [!] STORE HATASI ---: " . $e->getMessage());
-        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
-}
     /**
      * Güncelleme
      */
+
 public function update(Request $request, $id)
 {
-
     try {
         $booking = Booking::findOrFail($id);
-        $oldData = $booking->toArray();
-
-        // 1. Validasyon (Title'ı sildik, snapshot_guest_role_id'yi isteğe bağlı yaptık)
+        
+        // 1. Validasyon Kurallarını Güncelleyelim
         $validated = $request->validate([
             'room_id'                => 'sometimes|exists:rooms,id',
             'check_in'               => 'sometimes',
             'check_out'              => 'sometimes',
-            'snapshot_guest_role_id' => 'sometimes', // Kuralı esnettik
+            'status'                 => 'sometimes|string', // Status eklendi
+            'snapshot_guest_role_id' => 'sometimes',
+            'snapshot_is_vip'        => 'sometimes',
+            'full_name'              => 'sometimes|string',
         ]);
 
-        // 2. Manuel Atamalar (Validasyon dışındaki nested verileri çekiyoruz)
-        
-        // İSİM: guest_data.full_name -> snapshot_guest_name
-        if ($request->has('guest_data.full_name')) {
-            $booking->snapshot_guest_name = $request->input('guest_data.full_name');
+        // 2. STATUS GÜNCELLEME (Kritik eksik!)
+        if ($request->has('status')) {
+            $booking->status = $request->input('status');
         }
 
-        // ROL: snapshot_guest_role_id VEYA guest_data.role_id -> snapshot_guest_role_id
-        $newRoleId = $request->input('snapshot_guest_role_id') ?? $request->input('guest_data.role_id');
-        if ($newRoleId) {
-            $booking->snapshot_guest_role_id = $newRoleId;
-         //   Log::info("--- [LOG] ROL GÜNCELLENDİ: " . $newRoleId);
+        // 3. İSİM GÜNCELLEME (full_name veya snapshot_guest_name gelirse)
+        $nameInput = $request->input('full_name') ?? $request->input('snapshot_guest_name') ?? $request->input('guest_data.full_name');
+        if ($nameInput) {
+            $booking->snapshot_guest_name = mb_convert_case($nameInput, MB_CASE_TITLE, "UTF-8");
         }
 
-        // VIP: guest_data.is_vip -> snapshot_is_vip
-        if ($request->has('guest_data.is_vip')) {
-            $booking->snapshot_is_vip = (bool) $request->input('guest_data.is_vip');
+        // 4. ROL GÜNCELLEME
+        $roleInput = $request->input('snapshot_guest_role_id') ?? $request->input('guest_data.role_id');
+        if ($roleInput) {
+            $booking->snapshot_guest_role_id = $roleInput;
         }
 
-        // 3. Geri Kalan Standart Alanlar (room_id, check_in vb.)
+        // 5. VIP GÜNCELLEME
+        if ($request->has('snapshot_is_vip') || $request->has('is_vip') || $request->has('guest_data.is_vip')) {
+            $isVip = $request->input('snapshot_is_vip') ?? $request->input('is_vip') ?? $request->input('guest_data.is_vip');
+            $booking->snapshot_is_vip = filter_var($isVip, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        // 6. Standart Alanları Fill Et (room_id, check_in vb.)
         $booking->fill($validated);
         
-        // 4. KAYDET
-        $saveResult = $booking->save();
-        
-        //Log::info("--- [6] BOOKING SAVE SONUCU: " . ($saveResult ? 'BAŞARILI' : 'BAŞARISIZ'));
+        // 7. Kaydet
+        $booking->save();
 
-        // 5. Guest Tablosu Güncelleme (Zorunlu güncelleme)
+        // 8. Guest Tablosu ile Senkronizasyon
         if ($booking->guest_id) {
             Guest::where('id', $booking->guest_id)->update([
                 'full_name' => $booking->snapshot_guest_name,
                 'role_id'   => $booking->snapshot_guest_role_id,
                 'is_vip'    => $booking->snapshot_is_vip,
             ]);
-           // Log::info("--- [9] GUEST TABLOSU SENKRONİZE EDİLDİ ---");
         }
-
-        // Log Kaydı vb. işlemler...
-        // ...
 
         return response()->json([
             'success' => true, 
@@ -212,11 +204,10 @@ public function update(Request $request, $id)
         ]);
 
     } catch (\Exception $e) {
-        Log::error("--- [!] HATA ---: " . $e->getMessage());
+        Log::error("--- [!] UPDATE HATASI ---: " . $e->getMessage());
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
 }
-
     public function move(Request $request, $id)
     {
         $booking = Booking::findOrFail($id);
