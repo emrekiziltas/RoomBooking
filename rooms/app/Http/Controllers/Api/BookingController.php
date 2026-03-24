@@ -93,73 +93,74 @@ class BookingController extends Controller
     /**
      * Güncelleme ve Sürükle-Bırak (Update)
      */
-    public function update(Request $request, $id)
-    {
-        try {
-            $booking = Booking::findOrFail($id);
-            $oldData = $booking->toArray();
+public function update(Request $request, $id)
+{
+    try {
+        $booking = Booking::findOrFail($id);
+        $oldData = $booking->toArray();
 
-            $validated = $request->validate([
-                'room_id'                => 'sometimes|exists:rooms,id',
-                'check_in'               => 'sometimes',
-                'check_out'              => 'sometimes',
-                'status'                 => 'sometimes|string',
-                'snapshot_guest_role_id' => 'sometimes|integer',
-                'snapshot_is_vip'        => 'sometimes',
-                'snapshot_guest_name'    => 'sometimes|string',
-            ]);
+        $validated = $request->validate([
+            'room_id'                => 'sometimes|exists:rooms,id',
+            'check_in'               => 'sometimes',
+            'check_out'              => 'sometimes',
+            'status'                 => 'sometimes|string',
+            'snapshot_guest_role_id' => 'sometimes|integer',
+            'snapshot_is_vip'        => 'sometimes',
+            'snapshot_guest_name'    => 'sometimes|string',
+        ]);
 
-            // Değişkenleri tanımlıyoruz (Undefined hatası almamak için)
-            $targetRoomId   = $request->input('room_id', $booking->room_id);
-            $targetCheckIn  = $request->input('check_in', $booking->check_in);
-            $targetCheckOut = $request->input('check_out', $booking->check_out);
-            $room = Room::find($targetRoomId);
-    $roomName = $room ? $room->name : "Bilinmeyen Oda"; // Eğer oda silindiyse fallback ekledik
-            $room = Room::findOrFail($targetRoomId);
-
-        $targetRoomId = $request->room_id;
-    $start = Carbon::parse($request->check_in);
-    $end = Carbon::parse($request->check_out);
-
-    // Çakışan rezervasyonu bul
-    $conflict = Booking::where('room_id', $targetRoomId)
-        ->where('id', '!=', $id) // Kendisini hariç tut
-        ->where(function ($query) use ($start, $end) {
-            $query->where('check_in', '<', $end)
-                  ->where('check_out', '>', $start);
-        })
-        ->first();
-
-    if ($conflict) {
-        // Detaylı mesaj hazırla
-        $guestName = $conflict->snapshot_guest_name ?? 'Başka bir misafir';
-        $cStart = Carbon::parse($conflict->check_in)->format('d M');
-        $cEnd = Carbon::parse($conflict->check_out)->format('d M');
+        // Mevcut değerleri fallback (varsayılan) olarak alıyoruz
+        $targetRoomId   = $request->input('room_id', $booking->room_id);
+        $targetCheckIn  = $request->input('check_in', $booking->check_in);
+        $targetCheckOut = $request->input('check_out', $booking->check_out);
         
-       return response()->json([
-        'success' => false,
-        // Örnek: CONFLICT: Room 102 is occupied by JOHN DOE from Mar 25 to Mar 27
-        'message' => "CONFLICT: {$roomName} is occupied by {$guestName} from {$cStart} to {$cEnd}"
-    ], 422);
-    }
-            $booking->fill($validated);
+        $room = Room::findOrFail($targetRoomId);
 
-            // VIP ve Rol Dönüşümleri
-            if ($request->has('snapshot_guest_role_id')) $booking->snapshot_guest_role_id = (int)$request->input('snapshot_guest_role_id');
-            if ($request->has('snapshot_is_vip')) $booking->snapshot_is_vip = filter_var($request->input('snapshot_is_vip'), FILTER_VALIDATE_BOOLEAN);
-            if ($request->has('snapshot_guest_name')) $booking->snapshot_guest_name = mb_convert_case($request->input('snapshot_guest_name'), MB_CASE_TITLE, "UTF-8");
+        // ÇAKIŞMA KONTROLÜ (Kendisi hariç)
+        $start = Carbon::parse($targetCheckIn);
+        $end = Carbon::parse($targetCheckOut);
 
-            if ($booking->isDirty()) {
-                $booking->save();
-                $this->logAction($booking->fresh(), 'updated', $oldData);
-                $this->syncGuest($booking->fresh());
-            }
+        $conflict = Booking::where('room_id', $targetRoomId)
+            ->where('id', '!=', $id) // Kendisini hariç tutar
+            ->where(function ($query) use ($start, $end) {
+                $query->where('check_in', '<', $end->toDateString())
+                      ->where('check_out', '>', $start->toDateString());
+            })
+            ->first();
 
-            return response()->json(['success' => true, 'data' => new BookingResource($booking->fresh(['room', 'guest']))]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        if ($conflict) {
+            $guestName = $conflict->snapshot_guest_name ?? 'Another Guest';
+            $cStart = Carbon::parse($conflict->check_in)->format('d M');
+            $cEnd = Carbon::parse($conflict->check_out)->format('d M');
+            
+            return response()->json([
+                'success' => false,
+                'message' => "CONFLICT: Room {$room->name} is occupied by {$guestName} ({$cStart} - {$cEnd})"
+            ], 422);
         }
+
+        // Verileri doldur ve formatla
+        $booking->fill($validated);
+        
+        if ($request->has('check_in')) $booking->check_in = Carbon::parse($validated['check_in'])->toDateString();
+        if ($request->has('check_out')) $booking->check_out = Carbon::parse($validated['check_out'])->toDateString();
+        
+        // VIP ve Rol Dönüşümleri
+        if ($request->has('snapshot_guest_role_id')) $booking->snapshot_guest_role_id = (int)$request->input('snapshot_guest_role_id');
+        if ($request->has('snapshot_is_vip')) $booking->snapshot_is_vip = $request->boolean('snapshot_is_vip');
+        if ($request->has('snapshot_guest_name')) $booking->snapshot_guest_name = mb_convert_case($request->input('snapshot_guest_name'), MB_CASE_TITLE, "UTF-8");
+
+        if ($booking->isDirty()) {
+            $booking->save();
+            $this->logAction($booking->fresh(), 'updated', $oldData);
+            $this->syncGuest($booking->fresh());
+        }
+
+        return response()->json(['success' => true, 'data' => new BookingResource($booking->fresh(['room', 'guest']))]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
+}
 
     /**
      * Müsaitlik Sorgusu (Özel Metod)
