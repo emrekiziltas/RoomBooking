@@ -1,177 +1,168 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { Room } from '../types/index';
 import { getAvailableRooms, getFloors } from '../api/rooms';
-import { createBooking } from '../api/bookings';
+import { getBookings } from '../api/bookings';
 import { FloorSection } from '../components/FloorSection';
 import { PageHeader } from "../components/PageHeader";
-import { BookingModal } from "../components/BookingModal";
+import { NewBookingForm } from "../components/NewBookingForm";
+
 type FloorConfig = {
   label: string;
   color: string;
-  border: string;
-  bg: string;
 };
 
 export function Available() {
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  });
+
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [bookingModal, setBookingModal] = useState<{ room: Room } | null>(null);
-  const [bookingForm, setBookingForm] = useState({ title: '', start_time: '', end_time: '' });
-  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [floorConfigs, setFloorConfigs] = useState<Record<string, FloorConfig>>({});
-  const [floorsLoaded, setFloorsLoaded] = useState(false);
   const [expandedFloors, setExpandedFloors] = useState<Record<string, boolean>>({});
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [preSelectedRoomId, setPreSelectedRoomId] = useState<number | string | null>(null);
+  const [guestRoles, setGuestRoles] = useState<any[]>([]);
+  const formRef = useRef<HTMLDivElement>(null);
 
-  const buildFloorConfigs = (apiFloors: any[]): Record<string, FloorConfig> => {
-    const configs: Record<string, FloorConfig> = {};
-    apiFloors.forEach((f: any) => {
-      const key = f.key.toUpperCase();
-      configs[key] = {
-        label: f.label.toUpperCase(),
-        color: f.bg_color_class || 'text-brand-muted',
-        border: f.border_color_class || 'border-brand-muted',
-        bg: f.active_bg_class || 'bg-brand-surface',
-      };
-    });
-    return configs;
-  };
-
-  const fetchRooms = async (date: string) => {
+  const initData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const rRes = await getAvailableRooms(date);
-      const roomsData = Array.isArray(rRes) ? rRes : (rRes.data || []);
-      setRooms(roomsData);
-    } catch (error) {
-      console.error('Error fetching rooms:', error);
-      setRooms([]);
+      // Promise.allSettled: Biri hata verse de diğerleri yüklensin
+      const results = await Promise.allSettled([
+        getFloors(),
+        getAvailableRooms(selectedDate),
+        getBookings()
+      ]);
+
+      // 1. Katları İşle
+      const fRes = results[0];
+      if (fRes.status === 'fulfilled' && fRes.value?.data) {
+        const configs: Record<string, FloorConfig> = {};
+        fRes.value.data.forEach((f: any) => {
+          configs[f.key.toUpperCase()] = {
+            label: f.label.toUpperCase(),
+            color: f.bg_color_class || 'text-brand-muted',
+          };
+        });
+        setFloorConfigs(configs);
+      }
+
+      // 2. Odaları İşle
+      const rRes = results[1];
+      if (rRes.status === 'fulfilled') {
+        const roomsData = Array.isArray(rRes.value) ? rRes.value : (rRes.value?.data || []);
+        setRooms(roomsData);
+        
+        if (roomsData.length > 0 && Object.keys(expandedFloors).length === 0) {
+          const firstPrefix = roomsData[0].name?.[0]?.toUpperCase() || 'F';
+          setExpandedFloors({ [firstPrefix]: true });
+        }
+      } else {
+        throw new Error("Odalar yüklenemedi. Sunucu hatası.");
+      }
+
+      // 3. Rolleri İşle
+      const bRes = results[2];
+      if (bRes.status === 'fulfilled' && bRes.value?.meta?.guest_roles) {
+        setGuestRoles(bRes.value.meta.guest_roles);
+      }
+
+    } catch (e: any) {
+      console.error('Veri çekme hatası:', e);
+      setError(e.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, expandedFloors]);
 
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      try {
-        const [fRes, rRes] = await Promise.all([
-          floorsLoaded ? Promise.resolve({ data: null }) : getFloors(),
-          getAvailableRooms(selectedDate)
-        ]);
-        if (!floorsLoaded && fRes.data) {
-          setFloorConfigs(buildFloorConfigs(fRes.data));
-          setFloorsLoaded(true);
-        }
-        const roomsData = Array.isArray(rRes) ? rRes : (rRes.data || []);
-        setRooms(roomsData);
-      } catch (e) {
-        console.error('Init failed', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, [selectedDate]);
+  useEffect(() => { initData(); }, [selectedDate]); // Sadece tarih değişiminde tetiklenmesi yeterli
 
   const groupedRooms = useMemo(() => {
     const groups: Record<string, Room[]> = {};
-    const safeRooms = Array.isArray(rooms) ? rooms : [];
-    safeRooms.forEach((room) => {
-      const prefix = room.name?.[0]?.toUpperCase() || 'F';
-      if (!groups[prefix]) groups[prefix] = [];
-      groups[prefix].push(room);
+    rooms.forEach((room) => {
+      const freeDesks = room.available_capacity ?? 0;
+      if (freeDesks > 0) {
+        const prefix = room.name?.[0]?.toUpperCase() || 'F';
+        if (!groups[prefix]) groups[prefix] = [];
+        groups[prefix].push(room);
+      }
     });
     return groups;
   }, [rooms]);
 
-  useEffect(() => {
-    const keys = Object.keys(groupedRooms).sort();
-    if (keys.length > 0) {
-      setExpandedFloors(p => keys[0] in p ? p : { [keys[0]]: true });
-    }
-  }, [groupedRooms]);
-
-  const openBookingModal = (room: Room) => {
-    setBookingModal({ room });
-    setBookingForm({
-      title: '',
-      start_time: `${selectedDate}T09:00`,
-      end_time: `${selectedDate}T17:00`
-    });
-  };
-
-  const handleCreateBooking = async () => {
-    if (!bookingModal || !bookingForm.title.trim()) return;
-    setSaving(true);
-    try {
-      await createBooking({
-        room_id: bookingModal.room.id,
-        title: bookingForm.title,
-        start_time: bookingForm.start_time,
-        end_time: bookingForm.end_time,
-        color: 'var(--color-brand-primary)'
-      });
-      setBookingModal(null);
-      fetchRooms(selectedDate);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to create booking');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const fallbackFloor: FloorConfig = {
-    label: 'FLOOR',
-    color: 'text-brand-muted',
-    border: 'border-brand-muted',
-    bg: 'bg-brand-surface',
+  const handleRoomClick = (room: Room) => {
+    setPreSelectedRoomId(room.id);
+    setIsAddingNew(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   return (
-    <div className="min-h-screen bg-brand-surface font-brand">
-      {/* HEADER SECTION - Bookings ile milimetrik hiza için pt-4 */}
-      <div className="max-w-7xl mx-auto px-4 pt-4">
-        <div className="flex flex-col md:flex-row justify-between items-end">
-          <div className="flex-1 w-full">
-            <PageHeader highlight="ROOM" title="AVAILABILITY" />
-          </div>
+    <div className="min-h-screen bg-brand-surface font-brand pb-20">
+      <div className="max-w-7xl mx-auto px-4 pt-6">
+        <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b-2 border-slate-200 pb-6">
+          <PageHeader highlight="LIVE" title="AVAILABILITY" />
           
-          <div className="flex gap-2 pb-[2px] md:ml-4"> 
-            <input
+          <div className="flex gap-3 items-center">
+             <input
               type="date"
-              className="p-1 bg-white border border-brand-surface rounded-ini text-[11px] font-black uppercase outline-none"
+              className="p-2 bg-white border-2 border-slate-800 shadow-[2px_2px_0px_#000] font-black uppercase text-xs outline-none cursor-pointer"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
-            <button
-              onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-              className="px-3 py-1 bg-brand-secondary text-white rounded-ini text-[10px] font-black uppercase tracking-widest"
+            <button 
+              onClick={() => { setIsAddingNew(!isAddingNew); setPreSelectedRoomId(null); }}
+              className={`px-6 py-2 font-black uppercase text-xs tracking-tighter transition-all shadow-[4px_4px_0px_#000] active:shadow-none active:translate-x-[2px] active:translate-y-[2px] ${
+                isAddingNew ? 'bg-red-500 text-white' : 'bg-brand-primary text-white'
+              }`}
             >
-              Today
+              {isAddingNew ? '✕ Close' : '+ New Entry'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* CONTENT SECTION */}
-      <div className="max-w-7xl mx-auto px-4 mt-6"> 
-        {loading ? (
-          <div className="py-20 text-center font-black text-brand-muted text-[10px] tracking-[0.4em] animate-pulse uppercase">
-            Scanning Infrastructure...
+      <div className="max-w-7xl mx-auto px-4 mt-8">
+        <div ref={formRef}>
+          {isAddingNew && (
+            <div className="mb-12 p-1 bg-slate-800 shadow-[8px_8px_0px_#000]">
+              <NewBookingForm 
+                rooms={rooms}
+                initialRoomId={preSelectedRoomId} 
+                initialDate={selectedDate}
+                guestRoles={guestRoles} 
+                onSuccess={() => { setIsAddingNew(false); initData(); }}
+                onCancel={() => setIsAddingNew(false)}
+                showToast={(msg) => alert(msg)} 
+              />
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border-2 border-red-500 text-red-700 font-black text-sm uppercase italic">
+            ⚠️ {error}
           </div>
-        ) : rooms.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-ini border-2 border-dashed border-brand-surface">
-            <p className="text-brand-muted font-black text-[10px] uppercase tracking-widest">
-              No resources available for this sequence.
-            </p>
+        )}
+
+        {loading ? (
+          <div className="py-24 text-center font-black text-slate-400 text-xs tracking-[0.5em] animate-pulse uppercase">
+            Fetching Real-Time Data...
+          </div>
+        ) : Object.keys(groupedRooms).length === 0 ? (
+          <div className="py-20 text-center border-4 border-dashed border-slate-200 rounded-xl">
+            <p className="font-black text-slate-400 uppercase tracking-widest">No rooms available for this date.</p>
           </div>
         ) : (
-          <div className="space-y-4 pb-20"> 
+          <div className="space-y-6"> 
             {Object.keys(groupedRooms).sort().map((prefix) => {
               const floorRooms = groupedRooms[prefix] || [];
-              if (floorRooms.length === 0) return null;
-              const floor = floorConfigs[prefix] || { ...fallbackFloor, label: `${prefix} FLOOR` };
+              const floor = floorConfigs[prefix] || { label: `${prefix} FLOOR`, color: 'text-slate-500' };
 
               return (
                 <FloorSection
@@ -181,34 +172,46 @@ export function Available() {
                   isOpen={!!expandedFloors[prefix]}
                   onToggle={() => setExpandedFloors(p => ({ ...p, [prefix]: !p[prefix] }))}
                 >
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {floorRooms.map((room) => (
-                      <div
-                        key={room.id}
-                        onClick={() => openBookingModal(room)}
-                        className="ini-card p-4 hover:border-brand-primary transition-all cursor-pointer group relative overflow-hidden bg-white"
-                      >
-                        <h3 className={`font-black text-lg ${floor.color} uppercase tracking-tighter leading-none mb-2 group-hover:translate-x-1 transition-transform`}>
-                          {room.name}
-                        </h3>
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-black text-brand-secondary uppercase">
-                            {room.available_capacity} Desks Free
-                          </span>
-                          {room.booked_slots > 0 && (
-                            <div className="block mt-1">
-                              <span className="text-[8px] font-black text-brand-danger uppercase bg-brand-surface px-1.5 py-0.5 rounded-ini border border-brand-surface">
-                                {room.occupancy_rate}% Occupied
-                              </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {floorRooms.map((room) => {
+                      const occupancyPercent = ((room.capacity - (room.available_capacity ?? 0)) / room.capacity) * 100;
+                      
+                      return (
+                        <div
+                          key={room.id}
+                          onClick={() => handleRoomClick(room)}
+                          className="relative bg-white border-2 border-slate-800 p-5 cursor-pointer group hover:-translate-y-1 hover:shadow-[6px_6px_0px_#4f46e5] transition-all shadow-[6px_6px_0px_#e2e8f0] overflow-hidden"
+                        >
+                          <div className="absolute bottom-0 left-0 w-full h-1.5 bg-slate-100">
+                            <div 
+                              className={`h-full transition-all duration-500 ${occupancyPercent > 80 ? 'bg-red-500' : 'bg-brand-primary'}`}
+                              style={{ width: `${occupancyPercent}%` }}
+                            />
+                          </div>
+
+                          <div className="flex justify-between items-start mb-4">
+                            <h3 className={`font-black text-xl italic tracking-tighter uppercase ${floor.color}`}>
+                              {room.name}
+                            </h3>
+                            <span className="bg-slate-800 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
+                               {room.capacity} CAP
+                            </span>
+                          </div>
+
+                          <div className="flex items-end justify-between">
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Status</p>
+                                <p className={`font-black text-sm uppercase ${room.available_capacity === 1 ? 'text-red-500' : 'text-slate-800'}`}>
+                                    {room.available_capacity} Desks Free
+                                </p>
                             </div>
-                          )}
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="text-brand-primary font-black text-xl">→</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="mt-4 pt-3 border-t border-brand-surface flex justify-between items-center text-brand-muted group-hover:text-brand-primary transition-colors">
-                          <span className="text-[8px] font-black uppercase tracking-widest">Quick Book</span>
-                          <span className="text-xs group-hover:translate-x-1 transition-transform">→</span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </FloorSection>
               );
@@ -216,25 +219,8 @@ export function Available() {
           </div>
         )}
       </div>
-
-     {/* BOOKING MODAL */}
-{bookingModal && (
-  <BookingModal
-    isOpen={!!bookingModal}
-    onClose={() => setBookingModal(null)}
-    roomName={bookingModal.room.name}
-    floorConfig={floorConfigs[bookingModal.room.name?.[0]?.toUpperCase() || 'F'] || fallbackFloor}
-    
-    // YENİ MERKEZİ MODAL İÇİN GEREKLİ PROPLAR:
-    start={bookingForm.start_time} // Mevcut formdaki başlangıç saati
-    end={bookingForm.end_time}     // Mevcut formdaki bitiş saati
-    title={bookingForm.title}      // Formdaki başlık
-    setTitle={(val: string) => setBookingForm({ ...bookingForm, title: val })} // Başlığı güncelleme
-    onConfirm={handleCreateBooking}
-    submitting={saving} // 'saving' state'ini 'submitting' olarak yolluyoruz
-  />
-)}
     </div>
   );
 }
+
 export default Available;

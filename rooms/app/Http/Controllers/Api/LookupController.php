@@ -85,7 +85,7 @@ public function update(Request $request, $id)
     public function getByType($typeId)
     {
         $values = LookupValue::where('type_id', $typeId)
-                    ->select('id', 'key', 'label', 'type_id', 'metadata')
+                    ->select('id', 'key', 'label', 'type_id', 'metadata','sort_order')
                     ->get();
         return response()->json($values);
     }

@@ -128,15 +128,23 @@ export function Calendar() {
     return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
   }, []);
 
-  const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
-    const calendarDayTs = normalizeDate(day);
-    return bookings.filter(b => {
-      const bRoomId = (b as any).room_id || b.room?.id;
-      const startTs = normalizeDate((b as any).check_in);
-      const endTs = normalizeDate((b as any).check_out);
-      return Number(bRoomId) === Number(roomId) && calendarDayTs >= startTs && calendarDayTs < endTs;
-    });
-  };
+const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
+  const calendarDayTs = normalizeDate(day);
+  
+  return bookings.filter(b => {
+    // Backend'den hangi alanın geldiğinden emin olmak için her ikisini de kontrol ediyoruz
+    const bRoomId = (b as any).room_id || b.room?.id;
+    const startTs = normalizeDate((b as any).check_in || (b as any).start_time);
+    const endTs = normalizeDate((b as any).check_out || (b as any).end_time);
+
+    if (!startTs || !endTs) return false;
+
+    // KRİTİK DEĞİŞİKLİK: <= endTs yaparak aynı gün bitenleri de gösteriyoruz
+    return Number(bRoomId) === Number(roomId) && 
+           calendarDayTs >= startTs && 
+           calendarDayTs <= endTs; // Eskiden < idi
+  });
+};
 
   const getShadowState = (room: Room, dateStr: string) => {
     if (!draggedBooking || !dragOverCell || dragOverCell.roomId !== room.id)
