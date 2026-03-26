@@ -1,6 +1,6 @@
 import { useEffect, useState, Fragment, useMemo, useRef } from 'react';
 import { getRooms, getFloors } from '../api/rooms';
-import { getBookings, updateBooking, deleteBooking,moveBooking} from '../api/bookings';
+import { getBookings, updateBooking, deleteBooking, moveBooking } from '../api/bookings';
 import { NewBookingForm } from '../components/NewBookingForm';
 import { EditBookingModal } from '../components/EditBookingModal';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
@@ -26,10 +26,9 @@ const toMinutes = (t: string): number | null => {
   return parts[0] * 60 + parts[1];
 };
 
-const STANDARD_START = 8 * 60 + 30;  // 08:30
-const STANDARD_END   = 17 * 60;      // 17:00
+const STANDARD_START = 8 * 60 + 30;
+const STANDARD_END   = 17 * 60;
 const TOLERANCE = 5;
-
 
 const cleanISO = (val: any) => {
   if (!val) return '—';
@@ -70,35 +69,27 @@ export function Calendar() {
   const colWidth = viewWindow === 7 ? 'min-w-[100px]' : 'min-w-[70px]';
   const bookingTextSize = viewWindow === 7 ? 'text-[10px] h-6' : 'text-[8px] h-5';
 
-// Inside Calendar.tsx -> fetchData function
-const fetchData = async () => {
-  try {
-    const [r, b, f] = await Promise.all([getRooms(), getBookings(), getFloors()]);
- 
-    // 1. Set Rooms and Bookings
-    setRooms(r.data || []);
-    setBookings(b.data || []);
+  const fetchData = async () => {
+    try {
+      const [r, b, f] = await Promise.all([getRooms(), getBookings(), getFloors()]);
 
-    // 2. ROBUST ROLE CHECK
-    // Sometimes 'meta' is a sibling to 'data', sometimes it's inside 'data'.
-    const roles = b.meta?.guest_roles || b.guest_roles || [];
-    
-    // CHECK YOUR BROWSER CONSOLE FOR THIS
-    
-    setMeta({ guest_roles: roles });
+      setRooms(r.data || []);
+      setBookings(b.data || []);
 
-    // 3. Floor Configs...
-    const configs: Record<string, any> = {};
-    (f.data ?? []).forEach((floor: any) => {
-      configs[floor.key.toUpperCase()] = { label: floor.label.toUpperCase() };
-    });
-    setFloorConfigs(configs);
-  } catch (err) {
-    console.error("Fetch Error:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+      const roles = b.meta?.guest_roles || b.guest_roles || [];
+      setMeta({ guest_roles: roles });
+
+      const configs: Record<string, any> = {};
+      (f.data ?? []).forEach((floor: any) => {
+        configs[floor.key.toUpperCase()] = { label: floor.label.toUpperCase() };
+      });
+      setFloorConfigs(configs);
+    } catch (err) {
+      console.error("Fetch Error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => { fetchData(); }, []);
 
@@ -109,14 +100,13 @@ const fetchData = async () => {
     }
   }, [toast]);
 
-  // Drag over floor logic
   const handleDragOverFloor = (floor: string) => {
     if (!draggedBooking) return;
     if (collapsedFloors.includes(floor)) {
       if (floorOpenTimeoutRef.current) clearTimeout(floorOpenTimeoutRef.current);
       floorOpenTimeoutRef.current = setTimeout(() => {
         setCollapsedFloors(prev => prev.filter(f => f !== floor));
-      }, 500); // 500ms hover opens the floor
+      }, 500);
     }
   };
 
@@ -152,20 +142,19 @@ const fetchData = async () => {
     return Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
   }, []);
 
-const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
-  const calendarDayTs = new Date(day).setHours(0,0,0,0); // Takvimdeki günü sıfırla
-  
-  return bookings.filter(b => {
-    const bRoomId = b.room_id || b.room?.id;
-    // DB'den gelen tarihleri de sadece gün bazında karşılaştır (Saatleri at!)
-    const startTs = new Date(b.check_in).setHours(0,0,0,0);
-    const endTs = new Date(b.check_out).setHours(0,0,0,0);
+  const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
+    const calendarDayTs = new Date(day).setHours(0, 0, 0, 0);
 
-    return Number(bRoomId) === Number(roomId) && 
-           calendarDayTs >= startTs && 
-           calendarDayTs <= endTs; // Ruby'nin 1 Nisan'da girmesini sağlayan eşittir budur.
-  });
-};
+    return bookings.filter(b => {
+      const bRoomId = b.room_id || b.room?.id;
+      const startTs = new Date(b.check_in).setHours(0, 0, 0, 0);
+      const endTs = new Date(b.check_out).setHours(0, 0, 0, 0);
+
+      return Number(bRoomId) === Number(roomId) &&
+        calendarDayTs >= startTs &&
+        calendarDayTs <= endTs;
+    });
+  };
 
   const getShadowState = (room: Room, dateStr: string) => {
     if (!draggedBooking || !dragOverCell || dragOverCell.roomId !== room.id)
@@ -195,7 +184,7 @@ const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
       const response = await updateBooking(id, data);
       if (response) {
         setEditingBooking(null);
-        await fetchData(); 
+        await fetchData();
         setToast({ msg: "UPDATED SUCCESSFULLY ✓", type: 'success' });
       }
     } catch (err: any) {
@@ -229,33 +218,30 @@ const getBookingsForRoomAndDay = (roomId: number, day: Date) => {
     clearFloorTimeout();
   };
 
-const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
+  const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
     e.preventDefault();
     if (!draggedBooking) return;
 
     try {
-        // 🚀 updateBooking yerine MOVE metodunu çağırıyoruz
-        // Not: api/bookings.ts içinde moveBooking tanımlı olmalı: 
-        // export const moveBooking = (id, data) => axios.put(`/bookings/${id}/move`, data);
-        
-        const response = await moveBooking(draggedBooking.id, {
-            room_id: targetRoomId,
-            check_in: targetDate,  // Backend: "2026-04-01" + DB'deki Saat
-            check_out: targetDate, // Backend: "2026-04-05" + DB'deki Saat
-        });
+      const response = await moveBooking(draggedBooking.id, {
+        room_id: targetRoomId,
+        check_in: targetDate,
+        check_out: targetDate,
+      });
 
-        if (response) {
-            await fetchData();
-            setToast({ msg: "MOVED SUCCESSFULLY ✓", type: 'success' });
-        }
+      if (response) {
+        await fetchData();
+        setToast({ msg: "MOVED SUCCESSFULLY ✓", type: 'success' });
+      }
     } catch (err: any) {
-        console.error("Move Error:", err);
-        const serverMessage = err.response?.data?.message || "MOVE FAILED";
-        setToast({ msg: serverMessage.toUpperCase(), type: 'error' });
+      console.error("Move Error:", err);
+      const serverMessage = err.response?.data?.message || "MOVE FAILED";
+      setToast({ msg: serverMessage.toUpperCase(), type: 'error' });
     } finally {
-        handleDragEnd();
+      handleDragEnd();
     }
-};
+  };
+
   const dynamicFloors = useMemo(() => {
     const floorSet = new Set(rooms.map(room => room.name?.[0]?.toUpperCase()).filter(Boolean));
     return Array.from(floorSet).sort();
@@ -315,12 +301,10 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
         </div>
       </div>
 
-      {/* TOAST NOTIFICATION */}
+      {/* TOAST */}
       {toast && (
         <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in slide-in-from-top-10 min-w-[320px] max-w-[90vw]">
-          <div className={`px-6 py-4 rounded-xl shadow-[8px_8px_0px_#000] border-2 bg-white ${
-            toast.type === 'error' ? 'border-red-600' : 'border-brand-primary'
-          }`}>
+          <div className={`px-6 py-4 rounded-xl shadow-[8px_8px_0px_#000] border-2 bg-white ${toast.type === 'error' ? 'border-red-600' : 'border-brand-primary'}`}>
             <div className="flex items-center gap-4">
               <span className={`text-2xl ${toast.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
                 {toast.type === 'error' ? '⚠' : '✓'}
@@ -333,20 +317,19 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
         </div>
       )}
 
-{isFormOpen && (
-  <div className="mb-6">
-    <NewBookingForm
-      rooms={rooms}
-      guestRoles={meta.guest_roles || []} 
-      onSuccess={() => { setIsFormOpen(false); fetchData(); }}
-      onCancel={() => setIsFormOpen(false)}
-      showToast={(msg, type) => setToast({ msg, type: type as any })}
-      // ✨ Burası kritik: Tıklanan hücrenin bilgilerini NewBookingForm'a paslıyoruz
-      initialRoomId={rooms.find(r => r.id === dragOverCell?.roomId)?.id || undefined} 
-      initialDate={dragOverCell?.date || undefined}
-    />
-  </div>
-)}
+      {isFormOpen && (
+        <div className="mb-6">
+          <NewBookingForm
+            rooms={rooms}
+            guestRoles={meta.guest_roles || []}
+            onSuccess={() => { setIsFormOpen(false); fetchData(); }}
+            onCancel={() => setIsFormOpen(false)}
+            showToast={(msg, type) => setToast({ msg, type: type as any })}
+            initialRoomId={rooms.find(r => r.id === dragOverCell?.roomId)?.id || undefined}
+            initialDate={dragOverCell?.date || undefined}
+          />
+        </div>
+      )}
 
       {/* TABLE */}
       <div className="overflow-x-auto bg-white border-2 border-slate-800 no-scrollbar">
@@ -374,7 +357,7 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
           <tbody>
             {dynamicFloors.map(floor => {
               const isCollapsed = collapsedFloors.includes(floor);
-              
+
               return (
                 <Fragment key={floor}>
                   <tr
@@ -408,127 +391,125 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
                           </div>
                         </td>
                         {days.map(day => {
-                          const dateStr = day.toISOString().split('T')[0];
+                          const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
                           const dayBookings = getBookingsForRoomAndDay(room.id, day);
-                          if (day.toISOString().split('T')[0] === '2026-04-01') {
-
-}
-                       
                           const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
+                          // ── DRAG STATE ──────────────────────────────────────
+                          const { isShadow, isConflict } = getShadowState(room, dateStr);
+                          const isDragTarget = dragOverCell?.roomId === room.id && dragOverCell?.date === dateStr;
+
                           return (
-<td
-  key={day.toISOString()}
-  onDragEnter={() => draggedBooking && setDragOverCell({ 
-    roomId: room.id, 
-    date: `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}` 
-  })}
-  onDragOver={(e) => e.preventDefault()}
-  onDrop={(e) => {
-    const todayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-    handleDrop(e, room.id, todayStr);
-  }}
-  className={`p-0.5 border-r border-slate-100 relative align-top min-h-[80px]
-    ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}`}
->
-  <div className="flex flex-col gap-1 w-full">
-    {(() => {
-      const todayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+                            <td
+                              key={day.toISOString()}
+                              onDragEnter={() => draggedBooking && setDragOverCell({ roomId: room.id, date: dateStr })}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => handleDrop(e, room.id, dateStr)}
+                              className={`p-0.5 border-r border-slate-100 relative align-top min-h-[80px]
+                                ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}
+                                ${isDragTarget && !isConflict ? 'ring-2 ring-inset ring-green-400 bg-green-50/60' : ''}
+                                ${isDragTarget && isConflict  ? 'ring-2 ring-inset ring-red-400 bg-red-50/60'   : ''}
+                              `}
+                            >
+                              <div className="flex flex-col gap-1 w-full">
+                                {(() => {
+                                  const roomAllBookings = [...bookings]
+                                    .filter(b => Number(b.room_id || b.room?.id) === Number(room.id))
+                                    .sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime());
 
-      // 1. Odanın tüm rezervasyonlarını giriş tarihine göre sırala
-      const roomAllBookings = [...bookings]
-        .filter(b => Number(b.room_id || b.room?.id) === Number(room.id))
-        .sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime());
+                                  const lanes: any[][] = [];
+                                  roomAllBookings.forEach(res => {
+                                    let placed = false;
+                                    const resIn = res.check_in?.split(/[ T]/)[0];
 
-      // 2. GELİŞMİŞ SABİT KULVAR (LANE) HESAPLAMA
-      const lanes: any[][] = [];
-      roomAllBookings.forEach(res => {
-        let placed = false;
-        const resIn = res.check_in?.split(/[ T]/)[0];
+                                    for (let i = 0; i < lanes.length; i++) {
+                                      const lastInLane = lanes[i][lanes[i].length - 1];
+                                      const lastOut = lastInLane.check_out?.split(/[ T]/)[0];
+                                      if (lastOut < resIn) {
+                                        lanes[i].push(res);
+                                        placed = true;
+                                        break;
+                                      }
+                                    }
+                                    if (!placed) lanes.push([res]);
+                                  });
 
-        for (let i = 0; i < lanes.length; i++) {
-          const lastInLane = lanes[i][lanes[i].length - 1];
-          const lastOut = lastInLane.check_out?.split(/[ T]/)[0];
+                                  const totalSlots = Math.max(room.capacity, lanes.length, 2);
 
-          // DÜZELTME: <= yerine < kullanıyoruz. 
-          // Böylece Alexandra 1 Nisan'da çıkıyor, Ruby 1 Nisan'da giriyorsa 
-          // Ruby Alexandra'nın satırına (lane[1]) giremez, lane[2]'ye (3. satıra) düşer.
-          if (lastOut < resIn) {
-            lanes[i].push(res);
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) lanes.push([res]);
-      });
+                                  return Array.from({ length: totalSlots }).map((_, slotIndex) => {
+                                    const currentLane = lanes[slotIndex] || [];
+                                    const b = currentLane.find(res => {
+                                      const bStart = res.check_in?.split(/[ T]/)[0];
+                                      const bEnd = res.check_out?.split(/[ T]/)[0];
+                                      return dateStr >= bStart && dateStr <= bEnd;
+                                    });
 
-      // 3. RENDER
+                                    if (!b) {
+                                      return <div key={`empty-${slotIndex}-${dateStr}`} className="h-5 w-full opacity-0 pointer-events-none" />;
+                                    }
 
-const totalSlots = Math.max(room.capacity, lanes.length, 2);
-     
-      return Array.from({ length: totalSlots }).map((_, slotIndex) => {
-        const currentLane = lanes[slotIndex] || [];
-        const b = currentLane.find(res => {
-          const bStart = res.check_in?.split(/[ T]/)[0];
-          const bEnd = res.check_out?.split(/[ T]/)[0];
-          // Bugün bu rezervasyonun günlerinden biri mi? (Giriş ve çıkış dahil)
-          return todayStr >= bStart && todayStr <= bEnd;
-        });
+                                    const bStartStr = b.check_in?.split(/[ T]/)[0];
+                                    const bEndStr = b.check_out?.split(/[ T]/)[0];
+                                    const isStartDay = dateStr === bStartStr;
+                                    const isEndDay = dateStr === bEndStr;
 
-        if (!b) {
-          return <div key={`empty-${slotIndex}-${todayStr}`} className="h-5 w-full opacity-0 pointer-events-none" />;
-        }
+                                    const isCheckedIn = b.status === 'checked_in' || b.is_checked_in === true;
+                                    const baseColor = isCheckedIn ? '#22c55e' : '#6366f1';
 
-        const bStartStr = b.check_in?.split(/[ T]/)[0];
-        const bEndStr = b.check_out?.split(/[ T]/)[0];
-        const isStartDay = todayStr === bStartStr;
-        const isEndDay = todayStr === bEndStr;
-        
-        const isCheckedIn = b.status === 'checked_in' || b.is_checked_in === true;
-        const baseColor = isCheckedIn ? '#22c55e' : '#6366f1';
+                                    const inTimeRaw = b.check_in?.match(/([01]\d|2[0-3]):([0-5]\d)/)?.[0] || "";
+                                    const outTimeRaw = b.check_out?.match(/([01]\d|2[0-3]):([0-5]\d)/)?.[0] || "";
+                                    const inMins = toMinutes(inTimeRaw) ?? 0;
+                                    const outMins = toMinutes(outTimeRaw) ?? 1440;
 
-        const inTimeRaw = b.check_in?.match(/([01]\d|2[0-3]):([0-5]\d)/)?.[0] || "";
-        const outTimeRaw = b.check_out?.match(/([01]\d|2[0-3]):([0-5]\d)/)?.[0] || "";
-        const inMins = toMinutes(inTimeRaw) ?? 0;
-        const outMins = toMinutes(outTimeRaw) ?? 1440;
+                                    const isPartialStart = isStartDay && inMins >= 750;
+                                    const isPartialEnd = isEndDay && outMins <= 750;
 
-        const isPartialStart = isStartDay && inMins >= 750;
-        const isPartialEnd = isEndDay && outMins <= 750;
+                                    let bgStyle = {};
+                                    if (isPartialStart) {
+                                      bgStyle = { background: `linear-gradient(to top right, white 49.5%, ${baseColor} 50%)` };
+                                    } else if (isPartialEnd) {
+                                      bgStyle = { background: `linear-gradient(to top right, ${baseColor} 49.5%, white 50%)` };
+                                    } else {
+                                      bgStyle = { backgroundColor: baseColor };
+                                    }
 
-        let bgStyle = {};
-        if (isPartialStart) {
-          bgStyle = { background: `linear-gradient(to top right, white 49.5%, ${baseColor} 50%)` };
-        } else if (isPartialEnd) {
-          bgStyle = { background: `linear-gradient(to top right, ${baseColor} 49.5%, white 50%)` };
-        } else {
-          bgStyle = { backgroundColor: baseColor };
-        }
+                                    return (
+                                      <div
+                                        key={b.id}
+                                        draggable={true}
+                                        onDragStart={(e) => handleDragStart(e, b)}
+                                        onDragEnd={handleDragEnd}
+                                        onClick={(e) => { e.stopPropagation(); setEditingBooking(b); }}
+                                        className={`relative h-5 w-full flex items-center justify-center rounded-sm text-[8px] font-black uppercase overflow-hidden shadow-sm border border-black/5 cursor-move
+                                          ${(isPartialStart || isPartialEnd) ? 'text-slate-800' : 'text-white'}`}
+                                        style={{
+                                          ...bgStyle,
+                                          // ── Sürüklenen kartı soldur ──────────
+                                          opacity: draggedBooking?.id === b.id ? 0.3 : 1,
+                                          transition: 'opacity 0.15s',
+                                        }}
+                                      >
+                                        <span className="truncate px-1 pointer-events-none drop-shadow-sm">
+                                          {b.snapshot_guest_name}
+                                        </span>
+                                      </div>
+                                    );
+                                  });
+                                })()}
 
-        return (
-          <div
-            key={b.id}
-            draggable={true}
-            onDragStart={(e) => handleDragStart(e, b)}
-            onDragEnd={handleDragEnd}
-            onClick={(e) => { e.stopPropagation(); setEditingBooking(b); }}
-            className={`relative h-5 w-full flex items-center justify-center rounded-sm text-[8px] font-black uppercase overflow-hidden shadow-sm border border-black/5 cursor-move
-              ${(isPartialStart || isPartialEnd) ? 'text-slate-800' : 'text-white'}`}
-            style={bgStyle}
-          >
-            <span className="truncate px-1 pointer-events-none drop-shadow-sm">
-              {isCheckedIn && "● "}{b.snapshot_guest_name?.split(' ')[0]}
-            </span>
-          </div>
-        );
-      });
-    })()}
-
-    {/* Sürükleme Gölgesi */}
-    {draggedBooking && dragOverCell?.roomId === room.id && dragOverCell?.date === `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}` && (
-      <div className="h-5 w-full rounded-sm border-2 border-dashed border-indigo-400 bg-indigo-50/30 animate-pulse mt-1" />
-    )}
-  </div>
-</td>
+                                {/* ── Drop zone görseli ─────────────────────── */}
+                                {isDragTarget && !isConflict && (
+                                  <div className="h-5 w-full mt-0.5 rounded-sm border-2 border-dashed border-green-500 bg-green-100/40 flex items-center justify-center text-[8px] font-black text-green-700 uppercase">
+                                    {draggedBooking?.snapshot_guest_name?.split(' ')[0]}
+                                  </div>
+                                )}
+                                {isDragTarget && isConflict && (
+                                  <div className="h-5 w-full mt-0.5 rounded-sm border-2 border-dashed border-red-500 bg-red-100/40 flex items-center justify-center text-[8px] font-black text-red-700 uppercase">
+                                    dolu
+                                  </div>
+                                )}
+                              </div>
+                            </td>
                           );
                         })}
                       </tr>
