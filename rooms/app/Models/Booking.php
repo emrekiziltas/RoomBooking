@@ -26,6 +26,7 @@ protected $fillable = [
     'snapshot_guest_role_id',
     'snapshot_is_vip',
     'snapshot_guest_email',
+    'snapshot_guest_company',
 ];
 
     protected $casts = [

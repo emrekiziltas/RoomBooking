@@ -63,8 +63,8 @@ class RoomController extends Controller
         $capacity = $request->query('capacity');
         $occupiedStatuses = ['confirmed', 'checked_in', 'staying'];
 
-        $query = Room::query();
-
+      
+       $query = Room::with('features')->query();
         if ($capacity) {
             $query->where('capacity', '>=', $capacity);
         }
@@ -105,50 +105,72 @@ class RoomController extends Controller
      * Atama ekranı (Drag & Drop) için tarih aralığı kontrolü
      */
     public function availableRanges(Request $request)
-    {
-        $startDate = $request->query('start_date');
+{
+    try {
+        $startDateStr = $request->query('start_date'); // Örn: 2026-03-24
         $days = (int)$request->query('days', 1);
+        $queryStartTime = $request->query('start_time', '08:00:00');
+        $queryEndTime = $request->query('end_time', '18:00:00');
 
-        if (!$startDate) {
+        if (!$startDateStr) {
             return response()->json(['success' => false, 'message' => 'Tarih seçiniz'], 400);
         }
 
-        $endDate = date('Y-m-d', strtotime($startDate . " +{$days} days"));
+        // Aramak istediğimiz tam zaman aralığını oluşturuyoruz
+        $requestedStart = date('Y-m-d H:i:s', strtotime("$startDateStr $queryStartTime"));
+        $endDateStr = date('Y-m-d', strtotime($startDateStr . " +{$days} days"));
+        $requestedEnd = date('Y-m-d H:i:s', strtotime("$endDateStr $queryEndTime"));
+        
         $occupiedStatuses = ['confirmed', 'checked_in', 'staying'];
 
         $rooms = Room::with('features')->get();
         $availableRanges = [];
 
         foreach ($rooms as $room) {
-            $bookedCount = $room->bookings()
+            if ($room->capacity <= 0) continue;
+
+            $currentBookingsCount = $room->bookings()
                 ->whereIn('status', $occupiedStatuses)
-                ->where(function ($q) use ($startDate, $endDate) {
-                    $q->where('check_in', '<', $endDate)
-                      ->where('check_out', '>', $startDate);
+                ->where(function ($q) use ($requestedStart, $requestedEnd) {
+                    $q->where('check_in', '<', $requestedEnd)
+                      ->where('check_out', '>', $requestedStart);
                 })
                 ->count();
 
-            if ($bookedCount < $room->capacity) {
+            // Eğer odada hala boş yer varsa listeye ekle
+            if ($currentBookingsCount < $room->capacity) {
                 $availableRanges[] = [
                     'room' => [
                         'id' => $room->id,
                         'name' => $room->name,
                         'capacity' => $room->capacity,
                         'features' => $room->features,
+                        'current_occupancy' => $currentBookingsCount
                     ],
                     'ranges' => [[
-                        'start' => $startDate,
-                        'end' => $endDate,
+                        'start' => $requestedStart,
+                        'end' => $requestedEnd,
                         'days' => $days
                     ]]
                 ];
             }
-        } // Foreach burada bitiyor
+        }
 
+if (!collect($availableRanges)->contains(fn($item) => str_starts_with($item['room']['name'], 'F'))) {
+    $allRoomNames = \App\Models\Room::pluck('name')->toArray();
+    \Log::warning("UYARI: Uygunlar arasında F yok. Veritabanındaki tüm odalar: " . implode(', ', $allRoomNames));
+}
         return response()->json([
-            'success' => true,
-            'total_rooms_found' => count($availableRanges),
+            'success' => true, 
             'data' => $availableRanges
         ]);
+
+    } catch (\Exception $e) {
+        // Hata alırsan HTML yerine hatanın sebebini göreceksin
+        return response()->json([
+            'success' => false, 
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 }

@@ -75,7 +75,7 @@ class BookingLogController extends Controller
             $newVal = $new[$field] ?? null;
 
             // Değerler farklıysa diff'e ekle
-            if ($oldVal != $newVal) {
+            if ($oldVal !== $newVal) {
                 // Özel durumlar (Oda ID'sini isme çevir, VIP'yi Evet/Hayır yap vb.)
                 $formattedOld = $oldVal;
                 $formattedNew = $newVal;

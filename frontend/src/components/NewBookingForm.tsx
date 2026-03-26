@@ -28,7 +28,15 @@ export function NewBookingForm({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [searching, setSearching] = useState(false);
+const checkInTimes = [
+  { value: "08:30", label: "08:30" },
+  { value: "12:30", label: "12:30" }
+];
 
+const checkOutTimes = [
+  { value: "12:30", label: "12:30" },
+  { value: "17:00", label: "17:00" }
+];
   const [form, setForm] = useState({
     room_id: '',
     guest_id: null as number | null,
@@ -38,7 +46,7 @@ export function NewBookingForm({
     snapshot_is_vip: false,
     status: 'confirmed',
     check_in: new Date().toISOString().split('T')[0],
-    check_in_time: '09:00',
+    check_in_time: '08:30',
     check_out: new Date(Date.now() + 86400000).toISOString().split('T')[0],
     check_out_time: '17:00',
   });
@@ -57,7 +65,7 @@ useEffect(() => {
       // 2. Giriş ve Çıkış Tarihlerini Güncelle
       if (initialDate) {
         newForm.check_in = initialDate;
-        newForm.check_in_time = "09:00"; // Sabah 9:00 (String formatında olmalı)
+        newForm.check_in_time = "08:30"; // Sabah 9:00 (String formatında olmalı)
         
         newForm.check_out = initialDate; // Aynı gün çıkış
         newForm.check_out_time = "17:00";
@@ -211,15 +219,19 @@ useEffect(() => {
   >
     <option value="">SELECT ROLE</option>
     
-    {/* DESC (Büyükten Küçüğe) Sıralama: (b - a) */}
-    {guestRoles && [...guestRoles]
-      .sort((a, b) => (b.sort_order ?? 0) - (a.sort_order ?? 0))
-      .map(role => (
-        <option key={role.id} value={role.id}>
-          {role.label.toUpperCase()}
-        </option>
-      ))
-    }
+ {/* Role Select içindeki map kısmı */}
+{Array.isArray(guestRoles) && guestRoles.length > 0 ? (
+  guestRoles
+    .slice() // Orijinal diziyi bozmamak için kopya alıyoruz
+    .sort((a, b) => (b.sort_order ?? 0) - (a.sort_order ?? 0))
+    .map(role => (
+      <option key={role.id} value={role.id}>
+        {role.label?.toUpperCase()}
+      </option>
+    ))
+) : (
+  <option disabled>Loading Roles...</option>
+)}
   </select>
   <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-400 pointer-events-none" />
 </div>
@@ -236,6 +248,7 @@ useEffect(() => {
 
         {/* ... (Tarih ve Kaydet Butonları Bölümü) ... */}
         {divider}
+
 {/* CHECK-IN GRUBU */}
 <div className="flex items-center border-2 border-slate-800 shadow-[2px_2px_0px_#0f172a] bg-white flex-shrink-0">
   <input 
@@ -244,15 +257,16 @@ useEffect(() => {
     onChange={e => setForm({ ...form, check_in: e.target.value })}
     className={`${h} px-1.5 text-[9px] font-bold outline-none w-[105px] bg-transparent`} 
   />
-  <input 
-    type="time" 
+  {/* YENİ SELECT YAPISI */}
+  <select 
     value={form.check_in_time} 
     onChange={e => setForm({ ...form, check_in_time: e.target.value })}
-    className={`${h} px-1.5 border-l-2 border-slate-800 text-[9px] font-bold outline-none bg-slate-50/50 w-[80px]`} 
-  />
+    className={`${h} px-1.5 border-l-2 border-slate-800 text-[9px] font-black outline-none bg-slate-50/50 w-[75px] cursor-pointer appearance-none`}
+  >
+    {checkInTimes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+  </select>
 </div>
 
-{/* ARADAKİ OK İŞARETİ */}
 <span className="text-slate-400 font-bold text-[10px] px-1 select-none">→</span>
 
 {/* CHECK-OUT GRUBU */}
@@ -263,14 +277,15 @@ useEffect(() => {
     onChange={e => setForm({ ...form, check_out: e.target.value })}
     className={`${h} px-1.5 text-[9px] font-bold outline-none w-[105px] bg-transparent`} 
   />
-  <input 
-    type="time" 
+  {/* YENİ SELECT YAPISI */}
+  <select 
     value={form.check_out_time} 
     onChange={e => setForm({ ...form, check_out_time: e.target.value })}
-    className={`${h} px-1.5 border-l-2 border-slate-800 text-[9px] font-bold outline-none bg-slate-50/50 w-[80px]`} 
-  />
+    className={`${h} px-1.5 border-l-2 border-slate-800 text-[9px] font-black outline-none bg-slate-50/50 w-[75px] cursor-pointer appearance-none`}
+  >
+    {checkOutTimes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+  </select>
 </div>
-
         <div className="flex items-center gap-1.5 ml-auto">
           <button type="button" onClick={onCancel} className={`${h} w-9 flex items-center justify-center border-2 border-slate-800 bg-white hover:bg-red-50 shadow-[2px_2px_0px_#0f172a]`}>
             <X className="w-4 h-4 text-slate-400" />

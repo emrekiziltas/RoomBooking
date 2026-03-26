@@ -28,11 +28,18 @@ export const getAvailableRooms = async (date: string) => {
   return response.data;
 };
 
-export const getAvailableRanges = async (startDate: string, days: number = 5) => {
+export const getAvailableRanges = async (
+  startDate: string, 
+  days: number = 5, 
+  startTime: string = "08:00:00", 
+  endTime: string = "18:00:00"
+) => {
   const response = await api.get('/rooms/available-ranges', {
     params: { 
       start_date: startDate,
-      days: days
+      days: days,
+      start_time: startTime, // Laravel'e giden anahtar (key)
+      end_time: endTime      // Laravel'e giden anahtar (key)
     }
   });
   return response.data;

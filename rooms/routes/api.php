@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\GuestController;
 Route::post('auth/register', [AuthController::class, 'register']);
 Route::post('auth/login', [AuthController::class, 'login']);
 Route::post('/auth/google', [AuthController::class, 'googleLogin']);
+    Route::get('rooms/available-ranges', [RoomController::class, 'availableRanges']); 
 
  //    Route::get('assigns', [AssignController::class, 'index']);
      
@@ -30,7 +31,7 @@ Route::post('/auth/google', [AuthController::class, 'googleLogin']);
     
     // --- 🏨 Oda İşlemleri (Görüntüleme) ---
     Route::get('rooms/available', [RoomController::class, 'available']);
-    Route::get('rooms/available-ranges', [RoomController::class, 'availableRanges']); 
+
     Route::get('rooms/{id}/bookings', [RoomController::class, 'bookings']);
     
     // Sadece listeleme ve tekil görüntüleme her kullanıcıya açık
