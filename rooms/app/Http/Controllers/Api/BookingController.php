@@ -200,22 +200,25 @@ if ($request->has('check_out')) {
     /**
      * Müsaitlik Sorgusu
      */
-
-    private function isAvailable($roomId, $start, $end, $capacity, $excludeId = null)
+private function isAvailable($roomId, $start, $end, $capacity, $excludeId = null)
 {
-    // Saatleri sıfırlama, gelen saati olduğu gibi kullan:
     $checkIn  = Carbon::parse($start);
     $checkOut = Carbon::parse($end);
 
     $occupancy = Booking::where('room_id', $roomId)
-        ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
-        ->whereIn('status', ['confirmed', 'checked_in', 'staying', 'completed']) 
+        // Eğer excludeId varsa, o ID'yi sorgudan ÇIKAR
+        ->when($excludeId, function($query) use ($excludeId) {
+            return $query->where('id', '!=', $excludeId);
+        })
+        ->whereIn('status', ['confirmed', 'checked_in', 'staying']) // completed'ı çıkardık
         ->where(function ($query) use ($checkIn, $checkOut) {
-            // Standart Overlap (Çakışma) Algoritması
             $query->where('check_in', '<', $checkOut)
                   ->where('check_out', '>', $checkIn);
         })
         ->count();
+
+    // Log atarak occupancy'nin kaç çıktığını görelim:
+    \Log::info("Kapasite Kontrolü: Oda=$roomId, İçeridekiler=$occupancy, Kapasite=$capacity, Exclude=$excludeId");
 
     return $occupancy < $capacity;
 }

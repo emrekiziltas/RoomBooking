@@ -463,7 +463,9 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
       });
 
       // 3. RENDER
-      const totalSlots = Math.max(room.capacity, 3);
+
+const totalSlots = Math.max(room.capacity, lanes.length, 2);
+     
       return Array.from({ length: totalSlots }).map((_, slotIndex) => {
         const currentLane = lanes[slotIndex] || [];
         const b = currentLane.find(res => {
