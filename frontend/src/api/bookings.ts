@@ -25,6 +25,9 @@ export const getAuditLogs = async (limit: number = 20) => {
   const res = await api.get('/booking-logs', { params: { limit } });
   return res.data?.data || [];
 };
+
+export const moveBooking = (id: number, data: any) => api.patch(`/bookings/${id}/move`, data);
+
 //export const updateBooking = async (id: number, data: { title?: string; color?: string }) => {
 export const updateBooking = async (
   id: number, 

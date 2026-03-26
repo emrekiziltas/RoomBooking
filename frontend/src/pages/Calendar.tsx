@@ -1,6 +1,6 @@
 import { useEffect, useState, Fragment, useMemo, useRef } from 'react';
 import { getRooms, getFloors } from '../api/rooms';
-import { getBookings, updateBooking, deleteBooking } from '../api/bookings';
+import { getBookings, updateBooking, deleteBooking,moveBooking} from '../api/bookings';
 import { NewBookingForm } from '../components/NewBookingForm';
 import { EditBookingModal } from '../components/EditBookingModal';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
@@ -234,48 +234,28 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
     if (!draggedBooking) return;
 
     try {
-        // 1. Orijinal rezervasyonun saatlerini parçalayarak al (08:30:00 gibi)
-        // Eğer veri hatalıysa fallback olarak varsayılan saatleri kullan
-        const originalCheckInTime = draggedBooking.check_in.split(' ')[1] || "08:30:00";
-        const originalCheckOutTime = draggedBooking.check_out.split(' ')[1] || "17:00:00";
-
-        // 2. Yeni check-in tarihini hedef hücrenin tarihi + orijinal saati olarak birleştir
-        const newCheckIn = `${targetDate} ${originalCheckInTime}`;
+        // 🚀 updateBooking yerine MOVE metodunu çağırıyoruz
+        // Not: api/bookings.ts içinde moveBooking tanımlı olmalı: 
+        // export const moveBooking = (id, data) => axios.put(`/bookings/${id}/move`, data);
         
-        // 3. Rezervasyonun toplam süresini (duration) hesapla
-        const oldStart = new Date(draggedBooking.check_in.replace(' ', 'T')).getTime();
-        const oldEnd = new Date(draggedBooking.check_out.replace(' ', 'T')).getTime();
-        const durationMs = oldEnd - oldStart;
-
-        // 4. Yeni check-out tarihini, yeni girişin üzerine süreyi ekleyerek hesapla
-        const newCheckInDateObj = new Date(newCheckIn.replace(' ', 'T'));
-        const newCheckOutDateObj = new Date(newCheckInDateObj.getTime() + durationMs);
-        
-        // İsveç (sv-SE) yerel formatı YYYY-MM-DD HH:mm:ss çıktısı verdiği için ISO yerine bunu kullanıyoruz
-        const newCheckOut = newCheckOutDateObj.toLocaleString('sv-SE').replace('T', ' ');
-
-        // 5. API Güncellemesi
-        const response = await updateBooking(draggedBooking.id, {
+        const response = await moveBooking(draggedBooking.id, {
             room_id: targetRoomId,
-            check_in: newCheckIn,
-            check_out: newCheckOut,
-        } as any);
+            check_in: targetDate,  // Backend: "2026-04-01" + DB'deki Saat
+            check_out: targetDate, // Backend: "2026-04-05" + DB'deki Saat
+        });
 
-        // 6. Başarılı ise takvimi yenile ve bildirim göster
         if (response) {
             await fetchData();
             setToast({ msg: "MOVED SUCCESSFULLY ✓", type: 'success' });
         }
     } catch (err: any) {
-        // Hata durumunda (örneğin kapasite doluysa) sunucudan gelen mesajı göster
+        console.error("Move Error:", err);
         const serverMessage = err.response?.data?.message || "MOVE FAILED";
         setToast({ msg: serverMessage.toUpperCase(), type: 'error' });
     } finally {
-        // Her durumda sürükleme durumunu sıfırla
         handleDragEnd();
     }
 };
-
   const dynamicFloors = useMemo(() => {
     const floorSet = new Set(rooms.map(room => room.name?.[0]?.toUpperCase()).filter(Boolean));
     return Array.from(floorSet).sort();
@@ -455,12 +435,12 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
     {(() => {
       const todayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
 
-      // 1. Odanın tüm rezervasyonlarını ID'ye göre sırala (Sıralama sabitliği için)
+      // 1. Odanın tüm rezervasyonlarını giriş tarihine göre sırala
       const roomAllBookings = [...bookings]
         .filter(b => Number(b.room_id || b.room?.id) === Number(room.id))
-        .sort((a, b) => Number(a.id) - Number(b.id));
+        .sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime());
 
-      // 2. SABİT KULVAR (LANE) HESAPLAMA
+      // 2. GELİŞMİŞ SABİT KULVAR (LANE) HESAPLAMA
       const lanes: any[][] = [];
       roomAllBookings.forEach(res => {
         let placed = false;
@@ -470,8 +450,9 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
           const lastInLane = lanes[i][lanes[i].length - 1];
           const lastOut = lastInLane.check_out?.split(/[ T]/)[0];
 
-          // KRİTİK: Eğer birinin çıkış günü ile diğerinin giriş günü AYNI ise 
-          // (lastOut === resIn), onları AYNI kulvara koyma. Farklı satırda kalsınlar.
+          // DÜZELTME: <= yerine < kullanıyoruz. 
+          // Böylece Alexandra 1 Nisan'da çıkıyor, Ruby 1 Nisan'da giriyorsa 
+          // Ruby Alexandra'nın satırına (lane[1]) giremez, lane[2]'ye (3. satıra) düşer.
           if (lastOut < resIn) {
             lanes[i].push(res);
             placed = true;
@@ -481,15 +462,14 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
         if (!placed) lanes.push([res]);
       });
 
-      // 3. RENDER: Kulvarları (satırları) dön
+      // 3. RENDER
       const totalSlots = Math.max(room.capacity, 3);
       return Array.from({ length: totalSlots }).map((_, slotIndex) => {
         const currentLane = lanes[slotIndex] || [];
-        
-        // Bu satırda BUGÜN aktif olan misafiri bul
         const b = currentLane.find(res => {
           const bStart = res.check_in?.split(/[ T]/)[0];
           const bEnd = res.check_out?.split(/[ T]/)[0];
+          // Bugün bu rezervasyonun günlerinden biri mi? (Giriş ve çıkış dahil)
           return todayStr >= bStart && todayStr <= bEnd;
         });
 
@@ -497,7 +477,6 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
           return <div key={`empty-${slotIndex}-${todayStr}`} className="h-5 w-full opacity-0 pointer-events-none" />;
         }
 
-        // --- GÖRSEL MANTIK ---
         const bStartStr = b.check_in?.split(/[ T]/)[0];
         const bEndStr = b.check_out?.split(/[ T]/)[0];
         const isStartDay = todayStr === bStartStr;
