@@ -42,6 +42,7 @@ function getOccupancyColor(bookedCount: number, capacity: number, isWeekend: boo
   return 'bg-white border-brand-surface text-slate-100';
 }
 
+
 export function Calendar() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -156,28 +157,40 @@ export function Calendar() {
     });
   };
 
-  const getShadowState = (room: Room, dateStr: string) => {
-    if (!draggedBooking || !dragOverCell || dragOverCell.roomId !== room.id)
-      return { isShadow: false, isConflict: false };
+const getShadowState = (room: Room, dateStr: string) => {
+  if (!draggedBooking || !dragOverCell || dragOverCell.roomId !== room.id)
+    return { isShadow: false, isConflict: false };
 
-    const startTs = normalizeDate((draggedBooking as any).check_in);
-    const endTs = normalizeDate((draggedBooking as any).check_out);
-    const durationMs = endTs - startTs;
+  
 
-    const currentCellTs = normalizeDate(dateStr);
-    const dragStartTs = normalizeDate(dragOverCell.date);
-    const dragEndTs = dragStartTs + durationMs;
+  // 1. Rezervasyonun kaç gün sürdüğünü bul (Duration)
+  const startTs = normalizeDate(draggedBooking.check_in);
+  const endTs = normalizeDate(draggedBooking.check_out);
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const durationDays = Math.round((endTs - startTs) / oneDayMs);
 
-    const isShadow = currentCellTs >= dragStartTs && currentCellTs < dragEndTs;
-    let isConflict = false;
+  // 2. Şu anki hücrenin tarihi ve sürüklenen hedefin başlangıç tarihi
+  const currentCellTs = normalizeDate(dateStr);
+  const dragStartTs = normalizeDate(dragOverCell.date);
+  
+  // Hedef başlangıçtan itibaren süre kadar sonrasını hesapla
+  const dragEndTs = dragStartTs + (durationDays * oneDayMs);
 
-    if (isShadow) {
-      const otherBookings = getBookingsForRoomAndDay(room.id, new Date(dateStr))
-        .filter(b => Number(b.id) !== Number(draggedBooking.id));
-      isConflict = (otherBookings.length + 1) > room.capacity;
-    }
-    return { isShadow, isConflict };
-  };
+  // 3. Eğer şu anki hücre bu aralıktaysa "Gölge" (Shadow) içindedir
+  const isShadow = currentCellTs >= dragStartTs && currentCellTs <= dragEndTs;
+
+  
+
+  let isConflict = false;
+  if (isShadow) {
+    // Çakışma kontrolü: Bu hücrede kapasite aşılıyor mu?
+    const otherBookings = getBookingsForRoomAndDay(room.id, new Date(dateStr))
+      .filter(b => Number(b.id) !== Number(draggedBooking.id));
+    isConflict = (otherBookings.length + 1) > room.capacity;
+  }
+
+  return { isShadow, isConflict };
+};
 
   const handleUpdate = async (id: number, data: any) => {
     try {
@@ -223,31 +236,36 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
   if (!draggedBooking) return;
 
   try {
-    // 1. Sürüklenen kaydın orijinal saatlerini al (Örn: "12:30:00")
     const originalCheckInTime = draggedBooking.check_in.split(' ')[1] || "12:30:00";
-    const originalCheckOutTime = draggedBooking.check_out.split(' ')[1] || "12:15:00";
-
-    // 2. Hedef gün ile orijinal saati birleştir (Format: YYYY-MM-DD HH:mm:ss)
     const formattedCheckIn = `${targetDate} ${originalCheckInTime}`;
 
     const response = await moveBooking(draggedBooking.id, {
       room_id: targetRoomId,
-      check_in: formattedCheckIn, // Artık "2026-03-29 12:30:00" gidiyor!
-      // check_out'u backend zaten move metodu içinde gün farkına göre hesaplıyor, 
-      // ama garanti olsun diye tam format gönderelim.
+      check_in: formattedCheckIn,
     });
 
     if (response) {
       await fetchData();
       setToast({ msg: "MOVED SUCCESSFULLY ✓", type: 'success' });
     }
-  } catch (err: any) {
-    console.error("Move Error:", err);
+  }  catch (err: any) {
     const serverMessage = err.response?.data?.message || "MOVE FAILED";
-    setToast({ msg: serverMessage.toUpperCase(), type: 'error' });
-  } finally {
-    handleDragEnd();
-  }
+    
+    if (err.response && err.response.status === 422) {
+        // Console'da kırmızı hata yerine sarı uyarı basar
+        console.warn("⚠️ Validasyon Hatası:", serverMessage);
+        
+        // Kullanıcıya UI üzerinden bildir
+        setToast({ 
+            msg: serverMessage.toUpperCase(), 
+            type: 'error' 
+        });
+    } else {
+        // Bu gerçekten teknik bir sorundur (500 Server Error gibi)
+        console.error("🔥 Kritik Hata:", err);
+        setToast({ msg: "SYSTEM ERROR", type: 'error' });
+    }
+}
 };
   const dynamicFloors = useMemo(() => {
     const floorSet = new Set(rooms.map(room => room.name?.[0]?.toUpperCase()).filter(Boolean));
@@ -310,7 +328,7 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
 
       {/* TOAST */}
       {toast && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in slide-in-from-top-10 min-w-[320px] max-w-[90vw]">
+        <div className="fixed top-10 left-1/2 -translate-x-1{isShadow && (/2 z-[9999] animate-in fade-in slide-in-from-top-10 min-w-[320px] max-w-[90vw]">
           <div className={`px-6 py-4 rounded-xl shadow-[8px_8px_0px_#000] border-2 bg-white ${toast.type === 'error' ? 'border-red-600' : 'border-brand-primary'}`}>
             <div className="flex items-center gap-4">
               <span className={`text-2xl ${toast.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
@@ -410,7 +428,8 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
                             <td
                               key={day.toISOString()}
                              // onDragEnter={() => draggedBooking && setDragOverCell({ roomId: room.id, date: dateStr })}
-                              onDragOver={(e) => e.preventDefault()}
+                             onDragEnter={() => draggedBooking && setDragOverCell({ roomId: room.id, date: dateStr })} 
+                             onDragOver={(e) => e.preventDefault()}
                               onDrop={(e) => handleDrop(e, room.id, dateStr)}
                               className={`p-0.5 border-r border-slate-100 relative align-top min-h-[80px]
                                 ${getOccupancyColor(dayBookings.length, room.capacity, isWeekend)}
@@ -503,7 +522,19 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
                                     );
                                   });
                                 })()}
-
+{/* ── YENİ: GÖLGE (SHADOW) GÖRSELİ ── */}
+            {/* Eskiden burada sadece isDragTarget vardı, şimdi isShadow kullanıyoruz */}
+            {isShadow && (
+              <div className={`h-5 w-full mt-0.5 rounded-sm border-2 border-dashed flex items-center justify-center text-[8px] font-black uppercase transition-colors
+                ${isConflict 
+                  ? 'border-red-500 bg-red-100/40 text-red-700' 
+                  : 'border-green-500 bg-green-100/40 text-green-700'
+                }`}
+              >
+                {isConflict ? 'DOLU' : draggedBooking?.snapshot_guest_name?.split(' ')[0]}
+              </div>
+            )}
+            {/* ── Gölge görseli bitti ── */}
                                 {/* ── Drop zone görseli ─────────────────────── */}
                                 {isDragTarget && !isConflict && (
                                   <div className="h-5 w-full mt-0.5 rounded-sm border-2 border-dashed border-green-500 bg-green-100/40 flex items-center justify-center text-[8px] font-black text-green-700 uppercase">
