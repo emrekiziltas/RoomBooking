@@ -161,37 +161,48 @@ const getShadowState = (room: Room, dateStr: string) => {
   if (!draggedBooking || !dragOverCell || dragOverCell.roomId !== room.id)
     return { isShadow: false, isConflict: false };
 
-  
-
-  // 1. Rezervasyonun kaç gün sürdüğünü bul (Duration)
+  // 1. Süre ve Tarih Hesaplama
   const startTs = normalizeDate(draggedBooking.check_in);
   const endTs = normalizeDate(draggedBooking.check_out);
   const oneDayMs = 24 * 60 * 60 * 1000;
   const durationDays = Math.round((endTs - startTs) / oneDayMs);
 
-  // 2. Şu anki hücrenin tarihi ve sürüklenen hedefin başlangıç tarihi
   const currentCellTs = normalizeDate(dateStr);
   const dragStartTs = normalizeDate(dragOverCell.date);
-  
-  // Hedef başlangıçtan itibaren süre kadar sonrasını hesapla
   const dragEndTs = dragStartTs + (durationDays * oneDayMs);
 
-  // 3. Eğer şu anki hücre bu aralıktaysa "Gölge" (Shadow) içindedir
-  const isShadow = currentCellTs >= dragStartTs && currentCellTs <= dragEndTs;
+  // 2. Orijinal konumda gölgeyi gizle (Duplicate engelleme)
+  const isOriginalLocation = 
+    Number(draggedBooking.room_id || draggedBooking.room?.id) === Number(dragOverCell.roomId) && 
+    startTs === dragStartTs;
 
-  
+  let isShadow = !isOriginalLocation && (currentCellTs >= dragStartTs && currentCellTs <= dragEndTs);
 
   let isConflict = false;
   if (isShadow) {
-    // Çakışma kontrolü: Bu hücrede kapasite aşılıyor mu?
-    const otherBookings = getBookingsForRoomAndDay(room.id, new Date(dateStr))
-      .filter(b => Number(b.id) !== Number(draggedBooking.id));
-    isConflict = (otherBookings.length + 1) > room.capacity;
+    // --- BACKEND'DEKİ "MÜSAİTLİK ANALİZİ"Nİ BURADA YAPIYORUZ ---
+    
+    // O hücredeki tüm rezervasyonları al
+    const allBookingsOnDay = getBookingsForRoomAndDay(room.id, new Date(dateStr));
+
+    // Backend gibi: Sürüklediğimiz kaydı (ID: 252) listeden çıkartıyoruz
+    const otherBookings = allBookingsOnDay.filter(b => 
+      String(b.id) !== String(draggedBooking.id)
+    );
+
+    // Kapasite Analizi
+    const insideCount = otherBookings.length; // Logdaki "İçeridekiler" (Örn: Tara Hunter - 1)
+    const capacity = Number(room.capacity);   // Logdaki "Kapasite" (Örn: 2)
+
+    // Eğer (İçeridekiler + Bizim gölgemiz) kapasiteyi aşıyorsa çakışma vardır
+    isConflict = (insideCount + 1) > capacity;
+
+    // Konsolda backend logu gibi görmek istersen şunu açabilirsin:
+    // console.log(`[ANALİZ] Hücre: ${dateStr} | İçeridekiler: ${insideCount} | Kapasite: ${capacity} | Sonuç: ${isConflict ? 'KIRMIZI' : 'YEŞİL'}`);
   }
 
   return { isShadow, isConflict };
 };
-
   const handleUpdate = async (id: number, data: any) => {
     try {
       const response = await updateBooking(id, data);
@@ -500,52 +511,40 @@ const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: 
                                     }
 
                                     return (
-                                      <div
-                                        key={b.id}
-                                        draggable={true}
-                                        onDragStart={(e) => handleDragStart(e, b)}
-                                        onDragEnd={handleDragEnd}
-                                        onClick={(e) => { e.stopPropagation(); setEditingBooking(b); }}
-                                        className={`relative h-5 w-full flex items-center justify-center rounded-sm text-[8px] font-black uppercase overflow-hidden shadow-sm border border-black/5 cursor-move
-                                          ${(isPartialStart || isPartialEnd) ? 'text-slate-800' : 'text-white'}`}
-                                        style={{
-                                          ...bgStyle,
-                                          // ── Sürüklenen kartı soldur ──────────
-                                          opacity: draggedBooking?.id === b.id ? 0.3 : 1,
-                                          transition: 'opacity 0.15s',
-                                        }}
-                                      >
-                                        <span className="truncate px-1 pointer-events-none drop-shadow-sm">
-                                          {b.snapshot_guest_name}
-                                        </span>
-                                      </div>
-                                    );
-                                  });
-                                })()}
-{/* ── YENİ: GÖLGE (SHADOW) GÖRSELİ ── */}
-            {/* Eskiden burada sadece isDragTarget vardı, şimdi isShadow kullanıyoruz */}
-            {isShadow && (
-              <div className={`h-5 w-full mt-0.5 rounded-sm border-2 border-dashed flex items-center justify-center text-[8px] font-black uppercase transition-colors
-                ${isConflict 
-                  ? 'border-red-500 bg-red-100/40 text-red-700' 
-                  : 'border-green-500 bg-green-100/40 text-green-700'
-                }`}
-              >
-                {isConflict ? 'DOLU' : draggedBooking?.snapshot_guest_name?.split(' ')[0]}
-              </div>
-            )}
-            {/* ── Gölge görseli bitti ── */}
-                                {/* ── Drop zone görseli ─────────────────────── */}
-                                {isDragTarget && !isConflict && (
-                                  <div className="h-5 w-full mt-0.5 rounded-sm border-2 border-dashed border-green-500 bg-green-100/40 flex items-center justify-center text-[8px] font-black text-green-700 uppercase">
-                                    {draggedBooking?.snapshot_guest_name?.split(' ')[0]}
-                                  </div>
-                                )}
-                                {isDragTarget && isConflict && (
-                                  <div className="h-5 w-full mt-0.5 rounded-sm border-2 border-dashed border-red-500 bg-red-100/40 flex items-center justify-center text-[8px] font-black text-red-700 uppercase">
-                                    dolu
-                                  </div>
-                                )}
+                                              <div
+                                                key={b.id}
+                                                draggable={true}
+                                                onDragStart={(e) => handleDragStart(e, b)}
+                                                onDragEnd={handleDragEnd}
+                                                onClick={(e) => { e.stopPropagation(); setEditingBooking(b); }}
+                                                className={`relative h-5 w-full flex items-center justify-center rounded-sm text-[8px] font-black uppercase overflow-hidden shadow-sm border border-black/5 cursor-move
+                                                  ${(isPartialStart || isPartialEnd) ? 'text-slate-800' : 'text-white'}`}
+                                                style={{
+                                                  ...bgStyle,
+                                                  // ── Sürüklenen kartı soldur ──────────
+                                                  opacity: draggedBooking?.id === b.id ? 0.3 : 1,
+                                                  transition: 'opacity 0.15s',
+                                                }}
+                                              >
+                                                <span className="truncate px-1 pointer-events-none drop-shadow-sm">
+                                                  {b.snapshot_guest_name}
+                                                </span>
+                                              </div>
+                                             );
+                                            });
+                                            })()}
+                                             {/* ── YENİ: GÖLGE (SHADOW) GÖRSELİ ── */}
+                                            {isShadow && (
+                                          <div className={`h-5 w-full mt-0.5 rounded-sm border-2 border-dashed flex items-center justify-center text-[8px] font-black uppercase transition-colors
+                                            ${isConflict 
+                                              ? 'border-red-500 bg-red-100/40 text-red-700' 
+                                              : 'border-green-500 bg-green-100/40 text-green-700'
+                                            }`}
+                                          >
+                                            {isConflict ? 'DOLU' : draggedBooking?.snapshot_guest_name?.split(' ')[0]}
+                                          </div>
+                                           )}
+
                               </div>
                             </td>
                           );
