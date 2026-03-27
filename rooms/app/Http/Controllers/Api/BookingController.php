@@ -119,81 +119,75 @@ public function update(Request $request, $id)
         $booking = Booking::findOrFail($id);
         $oldData = $booking->toArray();
 
-        // 1. Veritabanındaki MEVCUT saatleri yedekle
-        $currentIn  = Carbon::parse($booking->check_in);
-        $currentOut = Carbon::parse($booking->check_out);
-        
-        \Log::info("Adım 1: DB'deki Mevcut Saatler", [
-            'check_in_saat'  => $currentIn->toTimeString(),
-            'check_out_saat' => $currentOut->toTimeString()
-        ]);
+        // 1. Mevcut Tarihleri Yedekle (Sürükleme yapıldığında saati korumak için)
+        $currentIn  = \Carbon\Carbon::parse($booking->check_in);
+        $currentOut = \Carbon\Carbon::parse($booking->check_out);
 
-  // 2. Check-in İşleme
-if ($request->has('check_in')) {
-    $rawIn = $request->input('check_in');
-    if (str_contains($rawIn, ':')) {
-        $booking->check_in = Carbon::parse($rawIn)->toDateTimeString();
-        \Log::info("Karar: Giriş saati kullanıcı tarafından belirlendi.");
-    } else {
-        $booking->check_in = Carbon::parse($rawIn)->setTime($currentIn->hour, $currentIn->minute, $currentIn->second)->toDateTimeString();
-        \Log::info("Karar: Sürükleme yapıldı, eski giriş saati korundu.");
-    }
-}
+        // 2. Genel Alanları Doldur (Tarihleri şimdilik hariç tutuyoruz)
+        $booking->fill($request->except(['check_in', 'check_out', 'snapshot_guest_name']));
 
-// 3. Check-out İşleme
-if ($request->has('check_out')) {
-    $rawOut = $request->input('check_out');
-    if (str_contains($rawOut, ':')) {
-        // Eğer kullanıcı modal'dan saatli bir veri gönderdiyse (örn: 12:30)
-        $booking->check_out = Carbon::parse($rawOut)->toDateTimeString();
-        \Log::info("Karar: Çıkış saati kullanıcı tarafından belirlendi.");
-    } else {
-        // Eğer sadece tarih geldiyse (sürükleme), eski çıkış saatini üzerine yaz
-        $booking->check_out = Carbon::parse($rawOut)->setTime($currentOut->hour, $currentOut->minute, $currentOut->second)->toDateTimeString();
-        \Log::info("Karar: Sürükleme yapıldı, eski çıkış saati korundu.");
-    }
-}
+        // 3. Giriş Tarihi ve Saati Hesapla
+        if ($request->has('check_in')) {
+            $rawIn = $request->input('check_in');
+            // Eğer "2026-03-27 12:30" gibi tam format geldiyse onu kullan, 
+            // sadece tarih geldiyse eski saati (08:30 vb.) üzerine ekle.
+            $booking->check_in = str_contains($rawIn, ':') 
+                ? \Carbon\Carbon::parse($rawIn)->toDateTimeString()
+                : \Carbon\Carbon::parse($rawIn)->setTime($currentIn->hour, $currentIn->minute)->toDateTimeString();
+        }
 
-        // 4. Müsaitlik Kontrolü Logu
+        // 4. Çıkış Tarihi ve Saati Hesapla (Kritik Alan)
+        if ($request->has('check_out')) {
+            $rawOut = $request->input('check_out');
+            $booking->check_out = str_contains($rawOut, ':') 
+                ? \Carbon\Carbon::parse($rawOut)->toDateTimeString()
+                : \Carbon\Carbon::parse($rawOut)->setTime($currentOut->hour, $currentOut->minute)->toDateTimeString();
+        }
+
+        // 5. Müsaitlik Kontrolü (15 Dakikalık Boşluk ve ID Dışlama Dahil)
         $targetRoomId = $request->input('room_id', $booking->room_id);
         $room = Room::findOrFail($targetRoomId);
-
-        \Log::info("Adım 4: Müsaitlik Kontrolü Yapılıyor...", ['oda' => $room->name]);
 
         if (!$this->isAvailable($targetRoomId, $booking->check_in, $booking->check_out, $room->capacity, $id)) {
             \Log::warning("!!! HATA: Oda Dolu !!!", ['booking_id' => $id]);
             return response()->json(['success' => false, 'message' => "Bu tarihlerde oda dolu!"], 422);
         }
 
-        // 5. Kayıt Öncesi "Dirty" Kontrolü
-        $booking->fill($request->except(['check_in', 'check_out', 'snapshot_guest_name']));
-        
-        \Log::info("Adım 5: Değişen Alanlar (Dirty)", $booking->getDirty());
+        // 6. Dirty Kontrolü ve Kayıt
+        // snapshot_guest_name gibi otomatik alanları burada set et ki isDirty() onları da görsün
+        if ($request->has('full_name')) {
+            $booking->snapshot_guest_name = strtoupper($request->input('full_name'));
+        }
 
-        // 6. Kaydetme İşlemi
+        \Log::info("Adım 5: Değişen Alanlar (Dirty Check)", $booking->getDirty());
+
         if ($booking->isDirty()) {
             $booking->save();
-            \Log::info("✅ Adım 6: Veritabanına Yazıldı.");
             
+            \Log::info("✅ Adım 6: Veritabanına Yazıldı.");
+
+            // Yan işlemleri yap (Sadece kayıt varsa)
             $booking = $booking->fresh(['room', 'guest']);
             $this->logAction($booking, 'updated', $oldData);
             $this->syncGuest($booking);
-        } else {
-            \Log::info("Bilgi: Hiçbir değişiklik algılanmadı, save atlandı.");
+
+            return response()->json([
+                'success' => true, 
+                'data' => new BookingResource($booking),
+                'message' => 'Kayıt başarıyla güncellendi.'
+            ]);
         }
 
-        \Log::info("--- [GÜNCELLEME BİTTİ] ---");
-
+        // Değişiklik yoksa
+        \Log::info("Bilgi: Hiçbir değişiklik algılanmadı.");
         return response()->json([
             'success' => true, 
-            'data' => new BookingResource($booking)
+            'data' => new BookingResource($booking),
+            'message' => 'Herhangi bir değişiklik yapılmadı.'
         ]);
 
     } catch (\Exception $e) {
-        \Log::error("🔴 KRİTİK HATA: " . $e->getMessage(), [
-            'dosya' => $e->getFile(),
-            'satir' => $e->getLine()
-        ]);
+        \Log::error("🔴 KRİTİK HATA: " . $e->getMessage());
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
 }
@@ -202,69 +196,107 @@ if ($request->has('check_out')) {
      */
 private function isAvailable($roomId, $start, $end, $capacity, $excludeId = null)
 {
-    $checkIn  = Carbon::parse($start);
-    $checkOut = Carbon::parse($end);
+    $checkIn = \Carbon\Carbon::parse($start);
+    $checkOut = \Carbon\Carbon::parse($end);
 
-    $occupancy = Booking::where('room_id', $roomId)
-        // Eğer excludeId varsa, o ID'yi sorgudan ÇIKAR
-        ->when($excludeId, function($query) use ($excludeId) {
-            return $query->where('id', '!=', $excludeId);
-        })
-        ->whereIn('status', ['confirmed', 'checked_in', 'staying']) // completed'ı çıkardık
+    \Log::info("=== [MÜSAİTLİK ANALİZİ] ===");
+    \Log::info("SORGULANAN: $start - $end | Kapasite: $capacity");
+
+    // Çakışan tüm kayıtları (kendisi hariç) çekiyoruz
+    $conflicts = \App\Models\Booking::where('room_id', $roomId)
+        ->whereIn('status', ['confirmed', 'checked_in'])
+        ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
         ->where(function ($query) use ($checkIn, $checkOut) {
-            $query->where('check_in', '<', $checkOut)
-                  ->where('check_out', '>', $checkIn);
+            // Sınır değerleri (12:30:00) esnetmek için 1 saniye kuralı
+            $query->where('check_in', '<', $checkOut->copy()->subSecond())
+                  ->where('check_out', '>', $checkIn->copy()->addSecond());
         })
-        ->count();
+        ->get();
 
-    // Log atarak occupancy'nin kaç çıktığını görelim:
-    \Log::info("Kapasite Kontrolü: Oda=$roomId, İçeridekiler=$occupancy, Kapasite=$capacity, Exclude=$excludeId");
+    $occupancy = $conflicts->count();
 
-    return $occupancy < $capacity;
+    if ($occupancy > 0) {
+        \Log::warning("⚠️ ENGEL BULUNDU ($occupancy adet):");
+        foreach ($conflicts as $c) {
+            \Log::warning(sprintf(
+                "   -> ID: %s | %s | %s - %s (Durum: %s)",
+                $c->id,
+                $c->snapshot_guest_name ?? 'İsimsiz',
+                $c->check_in,
+                $c->check_out,
+                $c->status
+            ));
+        }
+    } else {
+        \Log::info("✅ ENGEL YOK: Oda tamamen müsait.");
+    }
+
+    $result = $occupancy < $capacity;
+    \Log::info("FİNAL: İçeridekiler ($occupancy) < Kapasite ($capacity) ? " . ($result ? "EVET ✅" : "HAYIR ❌"));
+    \Log::info("=== [ANALİZ BİTTİ] ===");
+
+    return $result;
 }
-
 public function move(Request $request, $id)
 {
     try {
+        \Log::info("--- [MOVE İŞLEMİ BAŞLADI] ID: {$id} ---");
+
         $booking = Booking::findOrFail($id);
         $oldData = $booking->toArray();
 
-        // 1. Orijinal verileri ve aradaki gün farkını (süreyi) hesapla
-        $oldIn = Carbon::parse($booking->check_in);
-        $oldOut = Carbon::parse($booking->check_out);
-        
-        // Rezervasyon kaç gün/saat sürüyor? (Farkı sakla)
-        $durationInMinutes = $oldIn->diffInMinutes($oldOut);
+        // 1. Orijinal Carbon objelerini oluştur
+        $oldIn = \Carbon\Carbon::parse($booking->check_in);
+        $oldOut = \Carbon\Carbon::parse($booking->check_out);
 
         // 2. Yeni Günü Belirle (Saatleri DB'den koru)
         if ($request->has('check_in')) {
-            $targetDate = Carbon::parse($request->input('check_in'));
+            $targetDate = \Carbon\Carbon::parse($request->input('check_in'));
             
-            // Yeni check-in: Hedef Gün + Eski Saat
-            $newIn = $targetDate->setTime($oldIn->hour, $oldIn->minute, $oldIn->second);
+            // Kaç gün kaydırdığımızı bulalım (Örn: 2 gün ileri)
+            // startOfDay kullanıyoruz ki saat farkı gün sayısını şaşırtmasın
+            $dayDiff = $oldIn->copy()->startOfDay()->diffInDays($targetDate->copy()->startOfDay(), false);
+
+            // Yeni Check-in: Eski giriş saatini (12:30:00) kuruşu kuruşuna koru
+            $newIn = $oldIn->copy()->addDays($dayDiff);
             $booking->check_in = $newIn->toDateTimeString();
 
-            // 3. ✨ KRİTİK NOKTA: Check-out'u süreyi ekleyerek hesapla
-            // Böylece 3 günlükse, yine 3 gün sonrasına atar
-            $booking->check_out = $newIn->copy()->addMinutes($durationInMinutes)->toDateTimeString();
-            
-            \Log::info("Move: Süre korundu ({$durationInMinutes} dk). Yeni: {$booking->check_in} - {$booking->check_out}");
+            // ✨ KRİTİK DÜZELTME: 
+            // Dakika eklemek (diffInMinutes) yerine "Gün Farkı" ekliyoruz.
+            // Böylece DB'de 12:15 olan çıkış saati, yeni günde de TAM 12:15 kalır.
+            $newOut = $oldOut->copy()->addDays($dayDiff);
+            $booking->check_out = $newOut->toDateTimeString();
+
+            \Log::info("Move Analizi: {$dayDiff} gün kaydırıldı. Yeni: {$booking->check_in} - {$booking->check_out}");
         }
 
         if ($request->has('room_id')) {
             $booking->room_id = $request->input('room_id');
         }
 
-        // 4. Müsaitlik Kontrolü
+        // 3. Müsaitlik Kontrolü (Exclude ID ile kendini dışla)
         $room = Room::findOrFail($booking->room_id);
+        
         if (!$this->isAvailable($booking->room_id, $booking->check_in, $booking->check_out, $room->capacity, $id)) {
+            \Log::warning("Move Hatası: Oda Dolu!", ['id' => $id]);
             return response()->json(['success' => false, 'message' => 'Bu tarihlerde oda dolu!'], 422);
         }
 
+        // 4. Kaydet ve Fresh veriyi döndür
         $booking->save();
-        return response()->json(['success' => true, 'data' => $booking->fresh(['room', 'guest'])]);
+        
+        // Yan işlemler
+        if (method_exists($this, 'logAction')) $this->logAction($booking, 'moved', $oldData);
+        if (method_exists($this, 'syncGuest')) $this->syncGuest($booking);
+
+        return response()->json([
+            'success' => true, 
+            'data' => $booking->fresh(['room', 'guest']),
+            'message' => 'Rezervasyon başarıyla taşındı.'
+        ]);
 
     } catch (\Exception $e) {
+        \Log::error("🔴 Move Hatası: " . $e->getMessage());
         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
     }
 }

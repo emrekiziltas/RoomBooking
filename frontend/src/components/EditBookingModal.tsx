@@ -101,7 +101,7 @@ const checkInTimes = [
 ];
 
 const checkOutTimes = [
-  { value: "12:30", label: "12:30" },
+  { value: "12:15", label: "12:15" },
   { value: "17:00", label: "17:00" }
 ];
   return (
@@ -192,57 +192,58 @@ const checkOutTimes = [
             </div>
           </div>
 
+                  {/* CHECK-IN SATIRI */}
+<div className="flex items-end gap-3 mb-4"> {/* mb-4 ekledim ki yapışmasın */}
+  <div className="flex-1 space-y-1">
+    <label className="text-[9px] font-black text-brand-primary uppercase block">Check-In Tarihi</label>
+    <input 
+      type="date" 
+      value={form.check_in} 
+      onChange={(e) => setForm({ ...form, check_in: e.target.value })} 
+      className="w-full bg-slate-50 border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] outline-none" 
+    />
+  </div>
+  <div className="w-32 space-y-1">
+    <label className="text-[9px] font-black text-brand-primary uppercase block">Giriş Saati</label>
+    <select 
+      value={form.check_in_time} 
+      onChange={(e) => setForm({ ...form, check_in_time: e.target.value })} 
+      className="w-full bg-white border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] cursor-pointer"
+    >
+      <option value="08:30">08:30</option>
+      <option value="12:30">12:30</option>
+    </select>
+  </div>
+</div>
 
-
-  
-  {/* CHECK-IN SATIRI */}
-  <div className="flex items-end gap-3">
-    <div className="flex-1 space-y-1">
-      <label className="text-[9px] font-black text-brand-primary uppercase block">Check-In Tarihi</label>
-      <input 
-        type="date" 
-        value={form.check_in} 
-        onChange={(e) => setForm({ ...form, check_in: e.target.value })} 
-        className="w-full bg-slate-50 border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] outline-none" 
-      />
-    </div>
-    <div className="w-32 space-y-1">
-      <label className="text-[9px] font-black text-brand-primary uppercase block">Giriş Saati</label>
-      <select 
-        value={form.check_in_time} 
-        onChange={(e) => setForm({ ...form, check_in_time: e.target.value })} 
-        className="w-full bg-white border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] cursor-pointer"
-      >
-        <option value="08:30">08:30</option>
+{/* CHECK-OUT SATIRI - Bu div artık check-in div'inin dışında */}
+<div className="flex items-end gap-3">
+  <div className="flex-1 space-y-1">
+    <label className="text-[9px] font-black text-red-500 uppercase block">Check-Out Tarihi</label>
+    <input 
+      type="date" 
+      value={form.check_out} 
+      onChange={(e) => setForm({ ...form, check_out: e.target.value })} 
+      className="w-full bg-slate-50 border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] outline-none" 
+    />
+  </div>
+  <div className="w-32 space-y-1">
+    <label className="text-[9px] font-black text-red-500 uppercase block">Çıkış Saati</label>
+    <select 
+      value={form.check_out_time} 
+      onChange={(e) => setForm({ ...form, check_out_time: e.target.value })} 
+      className="w-full bg-white border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] cursor-pointer"
+    >
+      <option value="12:15">12:15</option>
         <option value="12:30">12:30</option>
-      </select>
-    </div>
-  </div>
-  </div>
-  {/* CHECK-OUT SATIRI */}
-  <div className="flex items-end gap-3">
-    <div className="flex-1 space-y-1">
-      <label className="text-[9px] font-black text-red-500 uppercase block">Check-Out Tarihi</label>
-      <input 
-        type="date" 
-        value={form.check_out} 
-        onChange={(e) => setForm({ ...form, check_out: e.target.value })} 
-        className="w-full bg-slate-50 border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] outline-none" 
-      />
-    </div>
-    <div className="w-32 space-y-1">
-      <label className="text-[9px] font-black text-red-500 uppercase block">Çıkış Saati</label>
-      <select 
-        value={form.check_out_time} 
-        onChange={(e) => setForm({ ...form, check_out_time: e.target.value })} 
-        className="w-full bg-white border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] cursor-pointer"
-      >
-        <option value="12:30">12:30</option>
-        <option value="17:00">17:00</option>
-      </select>
-    </div>
+      <option value="17:00">17:00</option>
+    </select>
   </div>
 
+
+    </div>
+
+  </div>
 
 
         {/* ACTIONS */}

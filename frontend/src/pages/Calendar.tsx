@@ -218,30 +218,37 @@ export function Calendar() {
     clearFloorTimeout();
   };
 
-  const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
-    e.preventDefault();
-    if (!draggedBooking) return;
+const handleDrop = async (e: React.DragEvent, targetRoomId: number, targetDate: string) => {
+  e.preventDefault();
+  if (!draggedBooking) return;
 
-    try {
-      const response = await moveBooking(draggedBooking.id, {
-        room_id: targetRoomId,
-        check_in: targetDate,
-        check_out: targetDate,
-      });
+  try {
+    // 1. Sürüklenen kaydın orijinal saatlerini al (Örn: "12:30:00")
+    const originalCheckInTime = draggedBooking.check_in.split(' ')[1] || "12:30:00";
+    const originalCheckOutTime = draggedBooking.check_out.split(' ')[1] || "12:15:00";
 
-      if (response) {
-        await fetchData();
-        setToast({ msg: "MOVED SUCCESSFULLY ✓", type: 'success' });
-      }
-    } catch (err: any) {
-      console.error("Move Error:", err);
-      const serverMessage = err.response?.data?.message || "MOVE FAILED";
-      setToast({ msg: serverMessage.toUpperCase(), type: 'error' });
-    } finally {
-      handleDragEnd();
+    // 2. Hedef gün ile orijinal saati birleştir (Format: YYYY-MM-DD HH:mm:ss)
+    const formattedCheckIn = `${targetDate} ${originalCheckInTime}`;
+
+    const response = await moveBooking(draggedBooking.id, {
+      room_id: targetRoomId,
+      check_in: formattedCheckIn, // Artık "2026-03-29 12:30:00" gidiyor!
+      // check_out'u backend zaten move metodu içinde gün farkına göre hesaplıyor, 
+      // ama garanti olsun diye tam format gönderelim.
+    });
+
+    if (response) {
+      await fetchData();
+      setToast({ msg: "MOVED SUCCESSFULLY ✓", type: 'success' });
     }
-  };
-
+  } catch (err: any) {
+    console.error("Move Error:", err);
+    const serverMessage = err.response?.data?.message || "MOVE FAILED";
+    setToast({ msg: serverMessage.toUpperCase(), type: 'error' });
+  } finally {
+    handleDragEnd();
+  }
+};
   const dynamicFloors = useMemo(() => {
     const floorSet = new Set(rooms.map(room => room.name?.[0]?.toUpperCase()).filter(Boolean));
     return Array.from(floorSet).sort();
@@ -402,7 +409,7 @@ export function Calendar() {
                           return (
                             <td
                               key={day.toISOString()}
-                              onDragEnter={() => draggedBooking && setDragOverCell({ roomId: room.id, date: dateStr })}
+                             // onDragEnter={() => draggedBooking && setDragOverCell({ roomId: room.id, date: dateStr })}
                               onDragOver={(e) => e.preventDefault()}
                               onDrop={(e) => handleDrop(e, room.id, dateStr)}
                               className={`p-0.5 border-r border-slate-100 relative align-top min-h-[80px]
