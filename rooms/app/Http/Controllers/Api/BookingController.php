@@ -202,40 +202,58 @@ private function isAvailable($roomId, $start, $end, $capacity, $excludeId = null
     \Log::info("=== [MÜSAİTLİK ANALİZİ] ===");
     \Log::info("SORGULANAN: $start - $end | Kapasite: $capacity");
 
-    // Çakışan tüm kayıtları (kendisi hariç) çekiyoruz
+    // 1. Çakışan tüm kayıtları çek (Kendimiz hariç)
     $conflicts = \App\Models\Booking::where('room_id', $roomId)
         ->whereIn('status', ['confirmed', 'checked_in'])
         ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
         ->where(function ($query) use ($checkIn, $checkOut) {
-            // Sınır değerleri (12:30:00) esnetmek için 1 saniye kuralı
+            // Tam saniye sınırlarında çakışma olmasın diye 1 saniye tolerans
             $query->where('check_in', '<', $checkOut->copy()->subSecond())
                   ->where('check_out', '>', $checkIn->copy()->addSecond());
         })
         ->get();
 
-    $occupancy = $conflicts->count();
-
-    if ($occupancy > 0) {
-        \Log::warning("⚠️ ENGEL BULUNDU ($occupancy adet):");
-        foreach ($conflicts as $c) {
-            \Log::warning(sprintf(
-                "   -> ID: %s | %s | %s - %s (Durum: %s)",
-                $c->id,
-                $c->snapshot_guest_name ?? 'İsimsiz',
-                $c->check_in,
-                $c->check_out,
-                $c->status
-            ));
-        }
-    } else {
+    if ($conflicts->isEmpty()) {
         \Log::info("✅ ENGEL YOK: Oda tamamen müsait.");
+        return true;
     }
 
-    $result = $occupancy < $capacity;
-    \Log::info("FİNAL: İçeridekiler ($occupancy) < Kapasite ($capacity) ? " . ($result ? "EVET ✅" : "HAYIR ❌"));
-    \Log::info("=== [ANALİZ BİTTİ] ===");
+    // 2. KESİN ÇÖZÜM: Saatlik Çakışma Analizi
+    // Bizim kalacağımız her bir günü döngüye alıyoruz
+    $currentDay = $checkIn->copy()->startOfDay();
+    $endDay = $checkOut->copy()->endOfDay();
 
-    return $result;
+    while ($currentDay->lte($endDay)) {
+        
+        // O güne ait kritik saat dilimleri (Girişler/Çıkışlar genelde öğlendir)
+        // 12:00, 14:00 gibi kritik zamanları kontrol etmek için günün ortasını baz alıyoruz
+        $midDay = $currentDay->copy()->setTime(13, 0, 0); // Saat 13:00 (Çıkışlar yapılmış, girişler başlamış olur)
+
+        $peopleAtThisMoment = 0;
+
+        foreach ($conflicts as $c) {
+            $cIn = \Carbon\Carbon::parse($c->check_in);
+            $cOut = \Carbon\Carbon::parse($c->check_out);
+
+            // Eğer çakışan rezervasyon günün bu kritik saatini kapsıyorsa sayacı 1 artır
+            if ($midDay->between($cIn, $cOut)) {
+                $peopleAtThisMoment++;
+            }
+        }
+
+        // Mevcutlar + Biz (1) > Kapasite ise oda doludur!
+        if (($peopleAtThisMoment + 1) > $capacity) {
+            \Log::warning("⚠️ ÇAKIŞMA: {$currentDay->toDateString()} tarihinde odada kapasite yetersiz!");
+            \Log::info("=== [ANALİZ BİTTİ] ===");
+            return false;
+        }
+
+        $currentDay->addDay();
+    }
+
+    \Log::info("✅ FİNAL: Kapasite yeterli. EVET ✅");
+    \Log::info("=== [ANALİZ BİTTİ] ===");
+    return true;
 }
 public function move(Request $request, $id)
 {

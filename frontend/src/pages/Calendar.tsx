@@ -171,7 +171,6 @@ const getShadowState = (room: Room, dateStr: string) => {
   const dragStartTs = normalizeDate(dragOverCell.date);
   const dragEndTs = dragStartTs + (durationDays * oneDayMs);
 
-  // 2. Orijinal konumda gölgeyi gizle (Duplicate engelleme)
   const isOriginalLocation = 
     Number(draggedBooking.room_id || draggedBooking.room?.id) === Number(dragOverCell.roomId) && 
     startTs === dragStartTs;
@@ -179,26 +178,54 @@ const getShadowState = (room: Room, dateStr: string) => {
   let isShadow = !isOriginalLocation && (currentCellTs >= dragStartTs && currentCellTs <= dragEndTs);
 
   let isConflict = false;
+
   if (isShadow) {
-    // --- BACKEND'DEKİ "MÜSAİTLİK ANALİZİ"Nİ BURADA YAPIYORUZ ---
-    
-    // O hücredeki tüm rezervasyonları al
-    const allBookingsOnDay = getBookingsForRoomAndDay(room.id, new Date(dateStr));
+    // Sürüklediğimiz kişiyi listeden çıkartıyoruz
+    const otherBookings = bookings.filter(b => {
+      const isSameRoom = Number(b.room_id || b.room?.id) === Number(room.id);
+      const isSameId = String(b.id) === String(draggedBooking.id);
+      const nameB = (b.snapshot_guest_name || '').toLowerCase().trim();
+      const nameDragged = (draggedBooking.snapshot_guest_name || '').toLowerCase().trim();
+      const isSameName = nameB === nameDragged && nameB !== '';
+      return isSameRoom && !(isSameId || isSameName);
+    });
 
-    // Backend gibi: Sürüklediğimiz kaydı (ID: 252) listeden çıkartıyoruz
-    const otherBookings = allBookingsOnDay.filter(b => 
-      String(b.id) !== String(draggedBooking.id)
-    );
+    const capacity = Number(room.capacity);
 
-    // Kapasite Analizi
-    const insideCount = otherBookings.length; // Logdaki "İçeridekiler" (Örn: Tara Hunter - 1)
-    const capacity = Number(room.capacity);   // Logdaki "Kapasite" (Örn: 2)
+    // Sürüklenen kartın YENİ simüle edilen giriş/çıkış saatleri (Milisaniye bazında)
+    const shadowInTs = new Date(dragOverCell.date + ' ' + draggedBooking.check_in.split('T')[1].substring(0, 8)).getTime();
+    const shadowOutTs = shadowInTs + (endTs - startTs);
 
-    // Eğer (İçeridekiler + Bizim gölgemiz) kapasiteyi aşıyorsa çakışma vardır
-    isConflict = (insideCount + 1) > capacity;
+    // DİKKAT: Diğer rezervasyonlarla zaman kesişimi var mı?
+    otherBookings.forEach(b => {
+      const bInTs = new Date(b.check_in.replace('T', ' ').substring(0, 19)).getTime();
+      const bOutTs = new Date(b.check_out.replace('T', ' ').substring(0, 19)).getTime();
 
-    // Konsolda backend logu gibi görmek istersen şunu açabilirsin:
-    // console.log(`[ANALİZ] Hücre: ${dateStr} | İçeridekiler: ${insideCount} | Kapasite: ${capacity} | Sonuç: ${isConflict ? 'KIRMIZI' : 'YEŞİL'}`);
+      // İki zaman aralığı birbiriyle KESİŞİYOR MU? (Overlap kontrolü)
+      const isOverlapping = (shadowInTs < bOutTs && shadowOutTs > bInTs);
+
+      if (isOverlapping) {
+        // Eğer bu iki rezervasyon aynı anda odadaysa, kapasiteyi 1 düşürüyoruz
+        let concurrentBookings = 1; // Bizim sürüklediğimiz kart
+
+        // Diğer rezervasyonlar da kendi aralarında çakışıyor mu?
+        otherBookings.forEach(ob => {
+          if (ob.id !== b.id) {
+            const obInTs = new Date(ob.check_in.replace('T', ' ').substring(0, 19)).getTime();
+            const obOutTs = new Date(ob.check_out.replace('T', ' ').substring(0, 19)).getTime();
+            
+            // Eğer diğerleri de bu zaman diliminde odadaysa onları da say
+            if (obInTs < bOutTs && obOutTs > bInTs) {
+              concurrentBookings++;
+            }
+          }
+        });
+
+        if (concurrentBookings > capacity) {
+          isConflict = true;
+        }
+      }
+    });
   }
 
   return { isShadow, isConflict };

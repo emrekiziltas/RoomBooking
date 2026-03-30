@@ -35,6 +35,35 @@ function DraggableBooking({ booking, isSelected, onSelect, isOverlay = false }: 
     zIndex: isOverlay ? 9999 : 100,
   } : undefined;
 
+const getTime = (dateStr: string) => {
+  if (!dateStr) return '--:--';
+  
+  // Eğer dateStr "2026-03-27 14:30:00" gibi geliyorsa direkt içinden saati alalım
+  // Bu yöntem Timezone (UTC+3 vs) hesaplamalarına girmediği için sapma yapmaz.
+  try {
+    const parts = dateStr.split(' ');
+    if (parts.length > 1) {
+      const timePart = parts[1]; // "14:30:00"
+      return timePart.substring(0, 5); // "14:30"
+    }
+    
+    // Eğer ISO formatındaysa (T harfi varsa)
+    const tParts = dateStr.split('T');
+    if (tParts.length > 1) {
+      return tParts[1].substring(0, 5);
+    }
+
+    // Fallback: Yine de kayma varsa manuel 1 saat geri çekme (Acil durum çözümü)
+    const date = new Date(dateStr);
+    // date.setHours(date.getHours() - 1); // Eğer her şey doğru ama yine de +1 ise bunu açabilirsin
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch (e) {
+    return '--:--';
+  }
+};
+
+const getDate = (d: string) => d ? new Date(d).toLocaleDateString([], { day: '2-digit', month: 'short' }).toUpperCase() : '-- ---';
+
   return (
     <div
       ref={setNodeRef}
@@ -42,24 +71,58 @@ function DraggableBooking({ booking, isSelected, onSelect, isOverlay = false }: 
       {...(isSelected ? listeners : {})} 
       {...(isSelected ? attributes : {})}
       onClick={() => !isOverlay && onSelect(booking)}
-      className={`p-3 mb-2 rounded border-2 transition-all relative bg-white select-none touch-none
+      className={`p-3 mb-2 rounded border-2 transition-all relative bg-white select-none touch-none group
         ${isSelected ? 'border-indigo-600 shadow-[4px_4px_0px_#000] scale-[1.02]' : 'border-slate-200 hover:border-indigo-300'}
         ${isDragging && !isOverlay ? 'opacity-0' : 'opacity-100'} 
         ${isOverlay ? 'rotate-2 shadow-2xl border-indigo-600' : ''}
       `}
     >
-      <p className="font-black text-[11px] uppercase truncate text-slate-800 pointer-events-none">
-        {booking.snapshot_is_vip && '⭐ '}{booking.snapshot_guest_name || 'NO NAME'}
-      </p>
-      <p className="text-[9px] font-bold text-slate-400 uppercase truncate pointer-events-none">{booking.title}</p>
-      <div className="flex justify-between mt-2 text-[8px] font-black text-slate-400 italic pointer-events-none">
-        <span>{new Date(booking.check_in || booking.start_time).toLocaleDateString()}</span>
-        <span>{new Date(booking.check_out || booking.end_time).toLocaleDateString()}</span>
+      {/* Üst Kısım: İsim ve VIP Durumu */}
+      <div className="flex items-start justify-between mb-2">
+        <p className="font-black text-[11px] uppercase truncate text-slate-800 pointer-events-none">
+          {booking.snapshot_is_vip && <span className="text-yellow-500 mr-1">⭐</span>}
+          {booking.snapshot_guest_name || 'NO NAME'}
+        </p>
       </div>
+
+      {/* Orta Kısım: Zaman Bilgileri (2 Satır Opsiyonel Görünüm) */}
+      <div className="flex items-center justify-between bg-slate-50 rounded-md p-2 border border-slate-100">
+        
+        {/* CHECK-IN BÖLÜMÜ */}
+        <div className="flex flex-col items-start">
+          <span className="text-[7px] font-black text-indigo-400 uppercase tracking-tighter">Check-In</span>
+          <span className="text-[11px] font-black text-indigo-700 leading-tight">
+             {getTime(booking.check_in || booking.start_time)}
+          </span>
+          <span className="text-[9px] font-bold text-slate-500 uppercase leading-tight">
+             {getDate(booking.check_in || booking.start_time)}
+          </span>
+        </div>
+
+        {/* AYRAÇ OKU */}
+        <div className="flex flex-col items-center px-1">
+           <span className="text-slate-300 text-[10px]">→</span>
+        </div>
+
+        {/* CHECK-OUT BÖLÜMÜ */}
+        <div className="flex flex-col items-end text-right">
+          <span className="text-[7px] font-black text-slate-400 uppercase tracking-tighter">Check-Out</span>
+          <span className="text-[11px] font-black text-slate-700 leading-tight">
+            {getTime(booking.check_out || booking.end_time)}
+          </span>
+          <span className="text-[9px] font-bold text-slate-500 uppercase leading-tight">
+            {getDate(booking.check_out || booking.end_time)}
+          </span>
+        </div>
+      </div>
+
+      {/* Alt Kısım: Rezervasyon Başlığı */}
+      <p className="text-[8px] mt-2 font-bold text-slate-400 uppercase truncate italic pointer-events-none tracking-tight">
+        {booking.title || 'General Booking'}
+      </p>
     </div>
   );
 }
-
 // --- 2. BİLEŞEN: DROPPABLE ROOM ---
 function DroppableRoom({ room, isPending, floorColor }: any) {
   const { isOver, setNodeRef } = useDroppable({ 
