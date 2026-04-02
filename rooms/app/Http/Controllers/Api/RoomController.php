@@ -57,14 +57,15 @@ class RoomController extends Controller
     /**
      * Tek bir tarih için müsaitlik kontrolü (Dashboard/Liste görünümü için)
      */
-    public function available(Request $request)
+ public function available(Request $request)
     {
         $date = $request->query('date');
         $capacity = $request->query('capacity');
         $occupiedStatuses = ['confirmed', 'checked_in', 'staying'];
 
-      
-       $query = Room::with('features')->query();
+        // 🚀 ÇÖZÜM: Gereksiz ->query() metodunu sildik, hata düzeldi.
+        $query = Room::with('features');
+        
         if ($capacity) {
             $query->where('capacity', '>=', $capacity);
         }

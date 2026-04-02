@@ -77,7 +77,7 @@ const fetchData = async () => {
 const groupedBookings = useMemo(() => {
   if (!bookings || bookings.length === 0) return {};
 
-  // Bugünün başlangıcını al (saat, dakika, saniye sıfırlanmış şekilde)
+  // Bugünün başlangıcını al (00:00:00)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -107,8 +107,14 @@ const groupedBookings = useMemo(() => {
 
     // Günleri gezerken SADECE bugün veya sonrası ise gruba ekle
     while (current <= endLimit) {
-      if (current >= today) { // <--- KRİTİK FİLTRE BURASI
-        const dateId = current.toISOString().split('T')[0];
+      if (current >= today) {
+        
+        // 🚀 ÇÖZÜM BURASI: toISOString() yerine yerel tarihi çekiyoruz
+        const year = current.getFullYear();
+        const month = String(current.getMonth() + 1).padStart(2, '0');
+        const day = String(current.getDate()).padStart(2, '0');
+        const dateId = `${year}-${month}-${day}`;
+        
         if (!groups[dateId]) groups[dateId] = [];
         
         if (!groups[dateId].find(b => b.id === booking.id)) {
@@ -119,7 +125,7 @@ const groupedBookings = useMemo(() => {
     }
   });
 
-  // 2. Tarihe göre sıralama (Artık sadece bugünden başlar)
+  // 2. Tarihe göre sıralama
   const sortedGroups: Record<string, Booking[]> = {};
   Object.keys(groups).sort().forEach(key => {
     const d = new Date(key);
@@ -131,6 +137,7 @@ const groupedBookings = useMemo(() => {
 
   return sortedGroups;
 }, [bookings, selectedRoomId]);
+
   const handleUpdate = async (id: number, updatedData: any) => {
     try {
       const res = await updateBooking(id, updatedData);

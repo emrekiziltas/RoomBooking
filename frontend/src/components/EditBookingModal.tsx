@@ -235,7 +235,7 @@ const checkOutTimes = [
       className="w-full bg-white border-2 border-slate-800 px-2 py-1.5 font-black text-[11px] cursor-pointer"
     >
       <option value="12:15">12:15</option>
-        <option value="12:30">12:30</option>
+
       <option value="17:00">17:00</option>
     </select>
   </div>
